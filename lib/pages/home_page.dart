@@ -128,11 +128,13 @@ class _HomePageState extends State<HomePage> {
                     if (!context.mounted) return;
                     Navigator.pop(context);
                     if (ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Settings restored! Please restart.'),
-                        ),
-                      );
+                      if (context.mounted) {
+                        context.read<MikrotikProvider>().reloadConfig();
+                        context.read<PingProvider>().reloadHosts();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Backup restored successfully!')),
+                        );
+                      }
                     }
                   },
                   icon: const Icon(Icons.file_download),
@@ -169,10 +171,10 @@ class _HomePageState extends State<HomePage> {
               if (!context.mounted) return;
               Navigator.pop(context);
               if (ok) {
+                context.read<MikrotikProvider>().reloadConfig();
+                context.read<PingProvider>().reloadHosts();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Settings restored! Please restart.'),
-                  ),
+                  const SnackBar(content: Text('Backup restored successfully!')),
                 );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(

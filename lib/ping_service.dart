@@ -106,6 +106,12 @@ class PingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> reloadHosts() async {
+    _results.clear();
+    await _loadHosts();
+    notifyListeners();
+  }
+
   void _startGlobalPingLoop() {
     if (_isLooping) return;
     _isLooping = true;
