@@ -97,14 +97,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
-  convert:
-    dependency: transitive
-    description:
-      name: convert
-      sha256: b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.2"
   cross_file:
     dependency: transitive
     description:
@@ -114,7 +106,7 @@ packages:
     source: hosted
     version: "0.3.5+2"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -145,6 +137,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
+  dotenv:
+    dependency: "direct main"
+    description:
+      name: dotenv
+      sha256: "379e64b6fc82d3df29461d349a1796ecd2c436c480d4653f3af6872eccbc90e1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.2.0"
   equatable:
     dependency: transitive
     description:
@@ -324,10 +324,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: e79ed1e8e1929bc6ecb6ec85f0cb519c887aa5b423705ded0d0f2d9226def388
+      sha256: "025f060e86d2d4c3c47b56e33caf7f93bf9283340f26d23424ebcfccf34f621e"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.0.3"
   http:
     dependency: "direct main"
     description:
@@ -416,14 +416,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
-  logger:
-    dependency: transitive
-    description:
-      name: logger
-      sha256: "25aee487596a6257655a1e091ec2ae66bc30e7af663592cc3a27e6591e05035c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.7.0"
   logging:
     dependency: transitive
     description:
@@ -480,22 +472,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
-  network_info_plus:
-    dependency: "direct main"
-    description:
-      name: network_info_plus
-      sha256: "2866dadcbee2709e20d67737a1556f5675b8b0cdcf2c1659ba74bc21bffede4f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.0.0"
-  network_info_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: network_info_plus_platform_interface
-      sha256: "7e7496a8a9d8136859b8881affc613c4a21304afeb6c324bcefc4bd0aff6b94b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.2"
   nm:
     dependency: transitive
     description:
@@ -688,14 +664,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
-  router_os_client:
-    dependency: "direct main"
+  record_use:
+    dependency: transitive
     description:
-      name: router_os_client
-      sha256: "0e052b3f8e6fd29328463b1cab11b15599320fcb731499ff9f22f96f6b7c4812"
+      name: record_use
+      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "0.6.0"
+  routeros_api:
+    dependency: "direct main"
+    description:
+      name: routeros_api
+      sha256: "3e2e54270dcb6179b4706df25ce496133993893ff8d13322d1fa29992ca9d897"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.4"
   share_plus:
     dependency: "direct main"
     description:

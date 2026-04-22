@@ -10,6 +10,7 @@ class TestHistoryItem {
   final int latency;
   final int jitter;
   final String server;
+  final String sponsor;
   final String isp;
   final double? lat;
   final double? lon;
@@ -21,6 +22,7 @@ class TestHistoryItem {
     required this.latency,
     required this.jitter,
     required this.server,
+    required this.sponsor,
     required this.isp,
     this.lat,
     this.lon,
@@ -33,22 +35,25 @@ class TestHistoryItem {
     'lt': latency,
     'jt': jitter,
     'srv': server,
+    'spon': sponsor,
     'isp': isp,
     'lat': lat,
     'lon': lon,
   };
 
-  factory TestHistoryItem.fromJson(Map<String, dynamic> json) => TestHistoryItem(
-    timestamp: DateTime.fromMillisecondsSinceEpoch(json['t']),
-    download: json['dl'],
-    upload: json['ul'],
-    latency: json['lt'],
-    jitter: json['jt'],
-    server: json['srv'],
-    isp: json['isp'],
-    lat: json['lat'],
-    lon: json['lon'],
-  );
+  factory TestHistoryItem.fromJson(Map<String, dynamic> json) =>
+      TestHistoryItem(
+        timestamp: DateTime.fromMillisecondsSinceEpoch(json['t']),
+        download: json['dl'],
+        upload: json['ul'],
+        latency: json['lt'],
+        jitter: json['jt'],
+        server: json['srv'] ?? '',
+        sponsor: json['spon'] ?? '-',
+        isp: json['isp'] ?? '',
+        lat: json['lat'],
+        lon: json['lon'],
+      );
 }
 
 class HistoryProvider extends ChangeNotifier {
@@ -65,7 +70,9 @@ class HistoryProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? data = prefs.getStringList(_storageKey);
     if (data != null) {
-      _items = data.map((e) => TestHistoryItem.fromJson(jsonDecode(e))).toList();
+      _items = data
+          .map((e) => TestHistoryItem.fromJson(jsonDecode(e)))
+          .toList();
       _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       notifyListeners();
     }
@@ -77,6 +84,7 @@ class HistoryProvider extends ChangeNotifier {
     required int latency,
     required int jitter,
     required String server,
+    required String sponsor,
     required String isp,
   }) async {
     double? lat, lon;
@@ -98,6 +106,7 @@ class HistoryProvider extends ChangeNotifier {
       timestamp: DateTime.now(),
       download: download,
       upload: upload,
+      sponsor: sponsor,
       latency: latency,
       jitter: jitter,
       server: server,
@@ -110,7 +119,10 @@ class HistoryProvider extends ChangeNotifier {
     if (_items.length > 100) _items.removeLast();
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_storageKey, _items.map((e) => jsonEncode(e.toJson())).toList());
+    await prefs.setStringList(
+      _storageKey,
+      _items.map((e) => jsonEncode(e.toJson())).toList(),
+    );
     notifyListeners();
   }
 

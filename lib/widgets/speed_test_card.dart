@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../speedtest_service.dart';
-import '../history_service.dart';
+import '../services/speedtest_service.dart';
+import '../services/history_service.dart';
+import 'base_card.dart';
 
 class SpeedTestCard extends StatelessWidget {
   const SpeedTestCard({super.key});
@@ -12,337 +13,524 @@ class SpeedTestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<SpeedTestProvider, HistoryProvider>(
       builder: (context, st, history, child) {
-        return Card(
-          margin: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-          elevation: 2,
-          child: ExpansionTile(
-            collapsedBackgroundColor: Colors.transparent,
-            leading: const Icon(
-              Icons.speed,
-              color: Colors.blueAccent,
-              size: 18,
-            ),
-            tilePadding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  st.serverName,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueAccent,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    _stat('DN', st.downloadSpeed, Colors.greenAccent),
-                    const SizedBox(width: 8),
-                    _stat('UP', st.uploadSpeed, Colors.blueAccent),
-                  ],
-                ),
-                Row(
-                  children: [
-                    _smallStat(
-                      'LT',
-                      st.latency.toDouble(),
-                      Colors.orangeAccent,
-                    ),
-                    const SizedBox(width: 8),
-                    _smallStat('JT', st.jitter.toDouble(), Colors.purpleAccent),
-                  ],
-                ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                PopupMenuButton<int>(
-                  icon: st.isRefreshing
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.dns, size: 14),
-                  tooltip: 'Select Server',
-                  itemBuilder: (context) {
-                    final servers = [...st.availableServers]
-                      ..sort((a, b) => a.latency.compareTo(b.latency));
-                    return [
-                      const PopupMenuItem(
-                        value: -1,
-                        child: Text(
-                          'Auto',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      ...servers
-                          .take(20)
-                          .toList()
-                          .asMap()
-                          .entries
-                          .map(
-                            (e) => PopupMenuItem(
-                              value: e.key,
-                              child: Text(
-                                '${e.value.name} (${e.value.latency < 9999 ? '${e.value.latency}ms' : '?'})',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                    ];
-                  },
-                  onSelected: (value) {
-                    if (value == -1) {
-                      st.selectServer(null);
-                      st.findBestServer();
-                    } else {
-                      final servers = [...st.availableServers]
-                        ..sort((a, b) => a.latency.compareTo(b.latency));
-                      st.selectServer(servers[value]);
-                    }
-                  },
-                ),
-                IconButton.filledTonal(
-                  onPressed: () {
-                    if (st.isActive) {
-                      st.stopTest();
-                    } else {
-                      st.startTest(
-                        onFinish: () {
-                          context.read<HistoryProvider>().addResult(
-                            download: st.downloadSpeed,
-                            upload: st.uploadSpeed,
-                            latency: st.latency,
-                            jitter: st.jitter,
-                            server: st.serverName,
-                            isp: st.clientIsp,
-                          );
-                        },
-                      );
-                    }
-                  },
-                  icon: Icon(
-                    st.isActive ? Icons.stop : Icons.play_arrow,
-                    size: 20,
-                  ),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 36,
-                    height: 36,
-                  ),
-                  padding: EdgeInsets.zero,
-                ),
-              ],
-            ),
+        return BaseCard(
+          leading: Icon(Icons.speed, size: 24, color: Colors.blueAccent),
+          titleWidget: Row(
             children: [
-              if (history.items.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'No history found. Run a test first!',
-                    style: TextStyle(fontSize: 10, color: Colors.grey),
+              _buildMiniStat(
+                'DOWN',
+                st.downloadSpeed,
+                Icons.arrow_downward,
+                Colors.greenAccent,
+                isBig: true,
+              ),
+              const SizedBox(width: 8),
+              _buildMiniStat(
+                'UP',
+                st.uploadSpeed,
+                Icons.arrow_upward,
+                Colors.blueAccent,
+                isBig: true,
+              ),
+              const SizedBox(width: 8),
+              _buildMiniStat(
+                'PING',
+                st.latency.toDouble(),
+                Icons.network_ping,
+                Colors.orangeAccent,
+              ),
+              const SizedBox(width: 8),
+              _buildMiniStat(
+                'JIT',
+                st.jitter.toDouble(),
+                Icons.speed,
+                Colors.purpleAccent,
+              ),
+            ],
+          ),
+          onTap: () => _showServerDialog(context, st),
+          body: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              const Icon(
+                Icons.signal_cellular_alt,
+                size: 18,
+                color: Colors.grey,
+              ),
+              const SizedBox(width: 6),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    st.serverSponsor,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      height: 1.0,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                )
-              else ...[
-                SizedBox(
-                  height: 120,
-                  child: LineChart(
-                    LineChartData(
-                      gridData: const FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                      ),
-                      titlesData: const FlTitlesData(
-                        topTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                      ),
-                      borderData: FlBorderData(
-                        show: true,
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: history.items.reversed
-                              .toList()
-                              .asMap()
-                              .entries
-                              .map(
-                                (e) =>
-                                    FlSpot(e.key.toDouble(), e.value.download),
-                              )
-                              .toList(),
-                          isCurved: true,
-                          color: Colors.greenAccent,
-                          barWidth: 2,
-                          dotData: const FlDotData(show: false),
-                        ),
-                        LineChartBarData(
-                          spots: history.items.reversed
-                              .toList()
-                              .asMap()
-                              .entries
-                              .map(
-                                (e) => FlSpot(e.key.toDouble(), e.value.upload),
-                              )
-                              .toList(),
-                          isCurved: true,
-                          color: Colors.blueAccent,
-                          barWidth: 2,
-                          dotData: const FlDotData(show: false),
+                  Text(
+                    st.serverName,
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Colors.grey,
+                      height: 1.0,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          trailing: IconButton.filledTonal(
+            onPressed: () {
+              if (st.isActive) {
+                st.stopTest();
+              } else {
+                st.startTest(
+                  onFinish: () {
+                    context.read<HistoryProvider>().addResult(
+                      download: st.downloadSpeed,
+                      upload: st.uploadSpeed,
+                      latency: st.latency,
+                      jitter: st.jitter,
+                      server: st.serverName,
+                      sponsor: st.serverSponsor,
+                      isp: st.clientIsp,
+                    );
+                  },
+                );
+              }
+            },
+            icon: Icon(st.isActive ? Icons.stop : Icons.play_arrow, size: 20),
+            constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+            padding: EdgeInsets.zero,
+          ),
+          children: [
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkWell(
+                    onTap: () => _showServerDialog(context, st),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.dns, size: 12, color: Colors.blueAccent),
+                        SizedBox(width: 4),
+                        Text(
+                          'Server Info - Tap to change',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueAccent,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columnSpacing: 16,
-                    headingRowHeight: 32,
-                    dataRowMinHeight: 24,
-                    dataRowMaxHeight: 32,
-                    columns: const [
-                      DataColumn(
-                        label: Text('Time', style: TextStyle(fontSize: 10)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      _buildInfoItem(
+                        'Location',
+                        st.serverName,
+                        Icons.location_on,
                       ),
-                      DataColumn(
-                        label: Text('DN', style: TextStyle(fontSize: 10)),
+                      _buildInfoItem(
+                        'Sponsor',
+                        st.availableServers.isNotEmpty &&
+                                st.selectedServer != null
+                            ? st.selectedServer!.sponsor
+                            : '-',
+                        Icons.business,
                       ),
-                      DataColumn(
-                        label: Text('UP', style: TextStyle(fontSize: 10)),
-                      ),
-                      DataColumn(
-                        label: Text('LT', style: TextStyle(fontSize: 10)),
-                      ),
-                      DataColumn(
-                        label: Text('JT', style: TextStyle(fontSize: 10)),
-                      ),
-                      DataColumn(
-                        label: Text('Location', style: TextStyle(fontSize: 10)),
-                      ),
+                      _buildInfoItem('ISP', st.clientIsp, Icons.wifi),
+                      _buildInfoItem('IP', st.clientIp, Icons.language),
                     ],
-                    rows: history.items
-                        .take(10)
-                        .map(
-                          (item) => DataRow(
-                            cells: [
-                              DataCell(
-                                Text(
-                                  DateFormat('HH:mm').format(item.timestamp),
-                                  style: const TextStyle(fontSize: 9),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  item.download.toStringAsFixed(1),
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.greenAccent,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  item.upload.toStringAsFixed(1),
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blueAccent,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  '${item.latency}ms',
-                                  style: const TextStyle(fontSize: 9),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  '${item.jitter}ms',
-                                  style: const TextStyle(fontSize: 9),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  item.server,
-                                  style: const TextStyle(fontSize: 9),
-                                ),
-                              ),
-                            ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (history.items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No history found. Run a test first!',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 120,
+                      child: LineChart(
+                        LineChartData(
+                          gridData: const FlGridData(
+                            show: true,
+                            drawVerticalLine: false,
                           ),
-                        )
-                        .toList(),
-                  ),
+                          titlesData: const FlTitlesData(
+                            topTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            rightTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                          ),
+                          borderData: FlBorderData(
+                            show: true,
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: history.items.reversed
+                                  .toList()
+                                  .asMap()
+                                  .entries
+                                  .map(
+                                    (e) => FlSpot(
+                                      e.key.toDouble(),
+                                      e.value.download,
+                                    ),
+                                  )
+                                  .toList(),
+                              isCurved: true,
+                              color: Colors.greenAccent,
+                              barWidth: 2,
+                              dotData: const FlDotData(show: false),
+                            ),
+                            LineChartBarData(
+                              spots: history.items.reversed
+                                  .toList()
+                                  .asMap()
+                                  .entries
+                                  .map(
+                                    (e) => FlSpot(
+                                      e.key.toDouble(),
+                                      e.value.upload,
+                                    ),
+                                  )
+                                  .toList(),
+                              isCurved: true,
+                              color: Colors.blueAccent,
+                              barWidth: 2,
+                              dotData: const FlDotData(show: false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        columnSpacing: 16,
+                        headingRowHeight: 36,
+                        dataRowMinHeight: 32,
+                        dataRowMaxHeight: 36,
+                        columns: const [
+                          DataColumn(
+                            label: Text('Time', style: TextStyle(fontSize: 11)),
+                          ),
+                          DataColumn(
+                            label: Text('DN', style: TextStyle(fontSize: 11)),
+                          ),
+                          DataColumn(
+                            label: Text('UP', style: TextStyle(fontSize: 11)),
+                          ),
+                          DataColumn(
+                            label: Text('LT', style: TextStyle(fontSize: 11)),
+                          ),
+                          DataColumn(
+                            label: Text('JT', style: TextStyle(fontSize: 11)),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Location',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Sponsor',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ],
+                        rows: history.items
+                            .take(10)
+                            .map(
+                              (item) => DataRow(
+                                cells: [
+                                  DataCell(
+                                    Text(
+                                      DateFormat(
+                                        'HH:mm',
+                                      ).format(item.timestamp),
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      item.download.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.greenAccent,
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      item.upload.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blueAccent,
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      '${item.latency}ms',
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      '${item.jitter}ms',
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      item.server,
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      item.sponsor,
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => history.clearHistory(),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 14,
+                        color: Colors.redAccent,
+                      ),
+                      label: const Text(
+                        'CLEAR HISTORY',
+                        style: TextStyle(fontSize: 10, color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
                 ),
-                TextButton.icon(
-                  onPressed: () => history.clearHistory(),
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 14,
-                    color: Colors.redAccent,
-                  ),
-                  label: const Text(
-                    'CLEAR HISTORY',
-                    style: TextStyle(fontSize: 10, color: Colors.redAccent),
-                  ),
-                ),
-              ],
+              ),
             ],
-          ),
+          ],
         );
       },
     );
   }
 
-  Widget _stat(String label, double val, Color color) => Row(
-    crossAxisAlignment: CrossAxisAlignment.baseline,
-    textBaseline: TextBaseline.alphabetic,
-    children: [
-      Text(
-        label,
-        style: TextStyle(
-          fontSize: 9,
-          color: color,
-          fontWeight: FontWeight.bold,
+  Widget _buildMiniStat(
+    String label,
+    double val,
+    IconData icon,
+    Color color, {
+    bool isBig = false,
+  }) {
+    final isLoading = val == 0;
+    final unit = switch (label) {
+      'PING' => 'ms',
+      'JIT' => 'ms',
+      _ => 'Mbps',
+    };
+
+    return SizedBox(
+      width: isBig ? 52 : 32,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: isBig ? 8 : 7, color: color),
+              const SizedBox(width: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: isBig ? 8 : 7,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isLoading
+                    ? '---'
+                    : val == val.roundToDouble()
+                    ? '${val.round()}'
+                    : val.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: isBig ? 24 : 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: isBig ? 8 : 7,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value, IconData icon) {
+    return SizedBox(
+      width: 120,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.blueAccent.withAlpha(180)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 8,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showServerDialog(BuildContext context, SpeedTestProvider st) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Server'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 250,
+          child: ListView.builder(
+            itemCount: st.availableServers.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return ListTile(
+                  leading: const Icon(Icons.auto_awesome, size: 18),
+                  title: const Text(
+                    'Auto',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    '${st.availableServers.length} servers available',
+                  ),
+                  selected: st.selectedServer == null,
+                  onTap: () {
+                    st.selectServer(null);
+                    st.findBestServer();
+                    Navigator.pop(context);
+                  },
+                );
+              }
+              final server = st.availableServers[index - 1];
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                leading: Icon(
+                  server.latency < 50
+                      ? Icons.signal_cellular_4_bar
+                      : (server.latency < 100
+                            ? Icons.signal_cellular_alt
+                            : Icons.signal_cellular_alt_1_bar),
+                  size: 18,
+                  color: server.latency < 50
+                      ? Colors.greenAccent
+                      : (server.latency < 100
+                            ? Colors.orangeAccent
+                            : Colors.redAccent),
+                ),
+                title: Text(server.name, style: const TextStyle(fontSize: 13)),
+                subtitle: Text(
+                  '${server.sponsor} • ${server.latency < 9999 ? '${server.latency}ms' : '?'}',
+                  style: const TextStyle(fontSize: 10),
+                ),
+                trailing: st.selectedServer == server
+                    ? const Icon(
+                        Icons.check,
+                        size: 18,
+                        color: Colors.greenAccent,
+                      )
+                    : null,
+                onTap: () {
+                  st.selectServer(server);
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+        ],
       ),
-      const SizedBox(width: 4),
-      Text(
-        val.toStringAsFixed(1),
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-      ),
-      const Text(' Mbps', style: TextStyle(fontSize: 8, color: Colors.grey)),
-    ],
-  );
-  Widget _smallStat(String label, double val, Color color) => Row(
-    children: [
-      Text(
-        '$label: ',
-        style: const TextStyle(fontSize: 10, color: Colors.grey),
-      ),
-      Text(
-        '${val.round()}',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: color,
-        ),
-      ),
-      const Text(' ms', style: TextStyle(fontSize: 8, color: Colors.grey)),
-    ],
-  );
+    );
+  }
 }

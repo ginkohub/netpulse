@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../ping_service.dart';
-import '../wifi_service.dart';
-import '../mikrotik_service.dart';
-import '../settings_service.dart';
+import '../services/ping_service.dart';
+import '../services/wifi_service.dart';
+import '../services/settings_service.dart';
 import 'log_page.dart';
 import 'about_page.dart';
 import '../widgets/wifi_info_card.dart';
@@ -129,10 +128,11 @@ class _HomePageState extends State<HomePage> {
                     Navigator.pop(context);
                     if (ok) {
                       if (context.mounted) {
-                        context.read<MikrotikProvider>().reloadConfig();
                         context.read<PingProvider>().reloadHosts();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Backup restored successfully!')),
+                          const SnackBar(
+                            content: Text('Backup restored successfully!'),
+                          ),
                         );
                       }
                     }
@@ -171,10 +171,11 @@ class _HomePageState extends State<HomePage> {
               if (!context.mounted) return;
               Navigator.pop(context);
               if (ok) {
-                context.read<MikrotikProvider>().reloadConfig();
                 context.read<PingProvider>().reloadHosts();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Backup restored successfully!')),
+                  const SnackBar(
+                    content: Text('Backup restored successfully!'),
+                  ),
                 );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -194,12 +195,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshAll() async {
     final wifi = context.read<WifiProvider>();
-    final mk = context.read<MikrotikProvider>();
-    
-    await Future.wait([
-      wifi.updateWifiDetails(),
-      if (mk.isConnected) mk.fetchUpdates(),
-    ]);
+    await wifi.updateWifiDetails();
 
     if (!mounted) return;
 
@@ -216,59 +212,190 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
+        toolbarHeight: 48,
         title: const Text(
           'NetPulse',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.backup_outlined),
-          onPressed: () => _showBackupRestoreDialog(context),
-        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AboutPage()),
+          Consumer<PingProvider>(
+            builder: (context, provider, _) => IconButton(
+              icon: Icon(
+                provider.isReorderEnabled ? Icons.check : Icons.reorder,
+                color: provider.isReorderEnabled ? Colors.greenAccent : null,
+              ),
+              onPressed: () => provider.toggleReorder(),
+              tooltip: provider.isReorderEnabled
+                  ? 'Save Order'
+                  : 'Enable Reordering',
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.list_alt_outlined),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const LogPage()),
-            ),
+          PopupMenuButton<int>(
+            icon: const Icon(Icons.settings_outlined),
+            onSelected: (value) {
+              if (value == 0) {
+                _showBackupRestoreDialog(context);
+              } else if (value == 1) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LogPage()),
+                );
+              } else if (value == 2) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 0,
+                child: Row(
+                  children: [
+                    Icon(Icons.backup_outlined, size: 20),
+                    SizedBox(width: 12),
+                    Text('Backup & Restore'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 1,
+                child: Row(
+                  children: [
+                    Icon(Icons.list_alt_outlined, size: 20),
+                    SizedBox(width: 12),
+                    Text('Internal Logs'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 2,
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 20),
+                    SizedBox(width: 12),
+                    Text('About'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refreshAll,
-          child: Consumer2<PingProvider, WifiProvider>(
-            builder: (context, provider, wifi, child) {
-              final results = provider.results;
-              return ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 70),
-                itemCount: results.length + 3,
-                itemBuilder: (context, index) {
-                  if (index == 0) return const WifiInfoCard();
-                  if (index == 1) return const MikrotikCard();
-                  if (index == 2) return const SpeedTestCard();
+          child: Consumer<PingProvider>(
+            builder: (context, provider, child) {
+              final items = provider.items;
+              final isReorder = provider.isReorderEnabled;
 
-                  final item = results[index - 3];
+              return ReorderableListView.builder(
+                padding: const EdgeInsets.fromLTRB(0, 4, 0, 70),
+                itemCount: items.length,
+                buildDefaultDragHandles: false,
+                onReorder: (oldIndex, newIndex) {
+                  provider.reorderItems(oldIndex, newIndex);
+                },
+                proxyDecorator: (child, index, animation) {
+                  return AnimatedBuilder(
+                    animation: animation,
+                    builder: (context, child) {
+                      return Material(
+                        elevation: 8,
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: child,
+                      );
+                    },
+                    child: child,
+                  );
+                },
+                itemBuilder: (context, index) {
+                  final item = items[index];
+
+                  Widget card;
+                  String itemKey;
+
+                  switch (item.type) {
+                    case DashboardItemType.wifi:
+                      itemKey = 'wifi_$index';
+                      card = const WifiInfoCard();
+                      break;
+                    case DashboardItemType.mikrotik:
+                      itemKey = 'mikrotik_${item.value ?? index}';
+                      final cfgKey = item.value ?? '$index';
+                      card = MikrotikCard(
+                        uniqueKey: cfgKey,
+                        configKey: cfgKey,
+                        onDelete: () => provider.removeItem(
+                          item.type,
+                          value: item.value,
+                          index: index,
+                        ),
+                      );
+                      break;
+                    case DashboardItemType.speedtest:
+                      itemKey = 'speedtest_$index';
+                      card = const SpeedTestCard();
+                      break;
+                    case DashboardItemType.ping:
+                      final host = item.value!;
+                      itemKey = 'ping_${host}_$index';
+                      final result = provider.getResult(host);
+                      if (result == null) {
+                        return SizedBox(key: ValueKey(itemKey));
+                      }
+                      card = PingCard(item: result);
+                      break;
+                  }
+
+                  // Root of the item MUST have the stable key
+                  final bool isMikrotik =
+                      item.type == DashboardItemType.mikrotik;
+                  if (isMikrotik) {
+                    return KeyedSubtree(
+                      key: ValueKey('${item.type.name}_${item.value ?? index}'),
+                      child: ReorderableDragStartListener(
+                        index: index,
+                        enabled: isReorder,
+                        child: card,
+                      ),
+                    );
+                  }
                   return Dismissible(
-                    key: ValueKey(item.host),
-                    direction: DismissDirection.endToStart,
+                    key: ValueKey(
+                      'dismiss_${item.type.name}_${item.value ?? index}',
+                    ),
+                    direction: isReorder
+                        ? DismissDirection.none
+                        : DismissDirection.endToStart,
+                    onDismissed: (_) {
+                      if (item.type == DashboardItemType.ping) {
+                        provider.removeHost(item.value!);
+                      } else {
+                        provider.removeItem(
+                          item.type,
+                          value: item.value,
+                          index: index,
+                        );
+                      }
+                    },
                     background: Container(
                       color: Colors.redAccent,
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 20),
                       child: const Icon(Icons.delete, size: 24),
                     ),
-                    onDismissed: (_) => provider.removeHost(item.host),
-                    child: PingCard(item: item),
+                    child: KeyedSubtree(
+                      key: ValueKey('${item.type.name}_${item.value ?? index}'),
+                      child: ReorderableDragStartListener(
+                        index: index,
+                        enabled: isReorder,
+                        child: card,
+                      ),
+                    ),
                   );
                 },
               );
@@ -277,8 +404,70 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton.small(
-        onPressed: () => _showAddHostDialog(context),
+        onPressed: () => _showAddCardMenu(context),
         child: const Icon(Icons.add, size: 24),
+      ),
+    );
+  }
+
+  void _showAddCardMenu(BuildContext context) {
+    final provider = context.read<PingProvider>();
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'Add Card',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.wifi),
+              title: const Text('WiFi Info'),
+              enabled: !provider.items.any(
+                (i) => i.type == DashboardItemType.wifi,
+              ),
+              onTap: () {
+                provider.addItem(DashboardItemType.wifi);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.router),
+              title: const Text('MikroTik'),
+              onTap: () {
+                final newKey =
+                    'mikrotik_${DateTime.now().millisecondsSinceEpoch}';
+                provider.addItem(DashboardItemType.mikrotik, value: newKey);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.speed),
+              title: const Text('Speed Test'),
+              enabled: !provider.items.any(
+                (i) => i.type == DashboardItemType.speedtest,
+              ),
+              onTap: () {
+                provider.addItem(DashboardItemType.speedtest);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.network_ping),
+              title: const Text('Ping Host'),
+              onTap: () {
+                Navigator.pop(context);
+                _showAddHostDialog(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

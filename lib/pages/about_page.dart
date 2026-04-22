@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../update_service.dart';
+import '../services/update_service.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
@@ -18,7 +18,11 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('About NetPulse'),
+        toolbarHeight: 48,
+        title: const Text(
+          'About NetPulse',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
       ),
       body: FutureBuilder<PackageInfo>(
@@ -76,11 +80,16 @@ class AboutPage extends StatelessWidget {
                         return Column(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.greenAccent.withAlpha(30),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.greenAccent.withAlpha(50)),
+                                border: Border.all(
+                                  color: Colors.greenAccent.withAlpha(50),
+                                ),
                               ),
                               child: Text(
                                 'New Version Available: v${updater.latestVersion}',
@@ -99,7 +108,10 @@ class AboutPage extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.greenAccent,
                                 foregroundColor: Colors.black,
-                                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                textStyle: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -120,7 +132,9 @@ class AboutPage extends StatelessWidget {
                             } else if (!updater.hasUpdate) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('You are already on the latest version!'),
+                                  content: Text(
+                                    'You are already on the latest version!',
+                                  ),
                                   duration: Duration(seconds: 2),
                                 ),
                               );
@@ -171,10 +185,7 @@ class AboutPage extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10, color: Colors.grey),
-          ),
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
           Text(
             value,
             style: const TextStyle(
@@ -211,7 +222,11 @@ class AboutPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.open_in_new, size: 10, color: Colors.blueAccent),
+                const Icon(
+                  Icons.open_in_new,
+                  size: 10,
+                  color: Colors.blueAccent,
+                ),
               ],
             ),
           ],

@@ -35,14 +35,19 @@ class UpdateProvider extends ChangeNotifier {
     if (!silent) notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse('https://api.github.com/repos/ginkohub/netpulse/releases/latest'),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse(
+              'https://api.github.com/repos/ginkohub/netpulse/releases/latest',
+            ),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _latestVersion = (data['tag_name'] as String).replaceAll('v', '');
-        _downloadUrl = data['html_url'] ?? 'https://github.com/ginkohub/netpulse/releases';
+        _downloadUrl =
+            data['html_url'] ?? 'https://github.com/ginkohub/netpulse/releases';
 
         _hasUpdate = _isNewerVersion(_currentVersion, _latestVersion);
       } else {
@@ -58,8 +63,14 @@ class UpdateProvider extends ChangeNotifier {
   }
 
   bool _isNewerVersion(String current, String latest) {
-    List<int> currentParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    List<int> latestParts = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    List<int> currentParts = current
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
+    List<int> latestParts = latest
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
 
     for (int i = 0; i < latestParts.length; i++) {
       int curr = i < currentParts.length ? currentParts[i] : 0;

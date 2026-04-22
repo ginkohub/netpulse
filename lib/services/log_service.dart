@@ -6,7 +6,11 @@ class LogEntry {
   final String message;
   final String level;
 
-  LogEntry({required this.timestamp, required this.message, this.level = 'INFO'});
+  LogEntry({
+    required this.timestamp,
+    required this.message,
+    this.level = 'INFO',
+  });
 }
 
 class LogProvider extends ChangeNotifier {
@@ -27,7 +31,9 @@ class LogProvider extends ChangeNotifier {
       _logs.removeAt(0);
     }
 
-    debugPrint('[$level] ${DateFormat('HH:mm:ss').format(entry.timestamp)}: $message');
+    debugPrint(
+      '[$level] ${DateFormat('HH:mm:ss').format(entry.timestamp)}: $message',
+    );
     notifyListeners();
   }
 

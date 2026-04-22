@@ -65,6 +65,7 @@ windows/flutter/generated_plugins.cmake
 .DS_Store
 Thumbs.db
 desktop.ini
+*.db
 
 # Logs
 *.log

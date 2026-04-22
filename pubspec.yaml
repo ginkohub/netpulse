@@ -1,8 +1,8 @@
 name: netpulse
-description: "A new Flutter project."
+description: "Network analysis tool for network administrators."
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 0.0.2
 
 environment:
   sdk: ^3.10.7
@@ -17,11 +17,11 @@ dependencies:
   intl: ^0.20.2
   shared_preferences: ^2.5.5
   connectivity_plus: 7.1.1
-  network_info_plus: ^7.0.0
   wifi_iot: ^0.3.19+2
+  routeros_api: ^0.1.4
   permission_handler: ^12.0.1
   http: ^1.6.0
-  router_os_client: ^2.0.0
+  crypto: ^3.0.5
   file_picker: 8.1.7
   share_plus: ^12.0.2
   path_provider: ^2.1.5
@@ -29,6 +29,7 @@ dependencies:
   fl_chart: ^1.2.0
   xml: ^6.6.1
   url_launcher: ^6.3.1
+  dotenv: ^4.0.0
   package_info_plus: ^9.0.1
 
 dev_dependencies:

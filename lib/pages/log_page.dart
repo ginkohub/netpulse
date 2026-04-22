@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../log_service.dart';
+import '../services/log_service.dart';
 
 class LogPage extends StatelessWidget {
   const LogPage({super.key});
@@ -10,7 +10,11 @@ class LogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Application Logs'),
+        toolbarHeight: 48,
+        title: const Text(
+          'Application Logs',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),

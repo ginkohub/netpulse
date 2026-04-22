@@ -64,8 +64,7 @@ class SettingsProvider extends ChangeNotifier {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: kIsWeb || Platform.isLinux ? FileType.custom : FileType.any,
-        allowedExtensions:
-            kIsWeb || Platform.isLinux ? ['json'] : null,
+        allowedExtensions: kIsWeb || Platform.isLinux ? ['json'] : null,
         withData: true,
       );
 

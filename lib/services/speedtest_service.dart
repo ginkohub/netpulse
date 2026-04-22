@@ -47,14 +47,15 @@ class SpeedTestProvider extends ChangeNotifier {
   int _jitter = 0;
   String _status = 'Ready';
 
-  String _serverName = 'Singapore';
-  String _baseUrl = 'http://sgp.speedtest.clouvider.net';
+  String _serverName = 'Select Server';
+  String _serverSponsor = '-';
+  String _baseUrl = '';
 
   List<SpeedTestServer> _availableServers = [];
   SpeedTestServer? _selectedServer;
 
-  String _clientIsp = 'Detecting...';
-  String _clientIp = '';
+  String _clientIsp = '-';
+  String _clientIp = '-';
 
   final List<String> _discoveryUrls = [
     'https://www.speedtest.net/api/js/servers?limit=25',
@@ -69,6 +70,7 @@ class SpeedTestProvider extends ChangeNotifier {
   int get jitter => _jitter;
   String get status => _status;
   String get serverName => _serverName;
+  String get serverSponsor => _serverSponsor;
   String get clientIsp => _clientIsp;
   String get clientIp => _clientIp;
   String get baseUrl => _baseUrl;
@@ -94,6 +96,8 @@ class SpeedTestProvider extends ChangeNotifier {
     fetchClientInfo();
     if (_availableServers.isEmpty) {
       findBestServer();
+    } else if (_selectedServer == null) {
+      await findBestServer();
     }
   }
 
@@ -101,7 +105,8 @@ class SpeedTestProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl =
         prefs.getString('st_url') ?? 'http://sgp.speedtest.clouvider.net';
-    _serverName = prefs.getString('st_name') ?? 'Singapore';
+    _serverName = prefs.getString('st_name') ?? 'Select Server';
+    _serverSponsor = prefs.getString('st_sponsor') ?? '-';
     final cachedServers = prefs.getString('st_servers');
     if (cachedServers != null) {
       try {
@@ -147,15 +152,20 @@ class SpeedTestProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectServer(SpeedTestServer? server) {
+  void selectServer(SpeedTestServer? server) async {
     _selectedServer = server;
     if (server != null) {
       _baseUrl = server.url;
-      _serverName = '${server.name} (${server.sponsor})';
+      _serverName = server.name;
+      _serverSponsor = server.sponsor;
       _log('Manual server selection: $_serverName');
     } else {
       _log('Server selection set to Auto');
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('st_url', _baseUrl);
+    await prefs.setString('st_name', _serverName);
+    await prefs.setString('st_sponsor', _serverSponsor);
     notifyListeners();
   }
 
@@ -233,6 +243,7 @@ class SpeedTestProvider extends ChangeNotifier {
   Future<void> _autoPickBest(List<SpeedTestServer> servers) async {
     String? bestUrl;
     String? bestName;
+    String? bestSponsor;
     int lowestPing = 9999;
 
     final serversWithCache = servers.where((s) => s.latency < 9999).toList();
@@ -243,7 +254,8 @@ class SpeedTestProvider extends ChangeNotifier {
       if (bestUrl.startsWith('https')) {
         bestUrl = bestUrl.replaceFirst('https', 'http');
       }
-      bestName = '${best.name} (${best.sponsor})';
+      bestName = best.name;
+      bestSponsor = best.sponsor;
       lowestPing = best.latency;
       _log('Using cached server: $_serverName (${lowestPing}ms)');
     }
@@ -263,7 +275,8 @@ class SpeedTestProvider extends ChangeNotifier {
           if (p < lowestPing) {
             lowestPing = p;
             bestUrl = url;
-            bestName = '${s.name} (${s.sponsor})';
+            bestName = s.name;
+            bestSponsor = s.sponsor;
           }
         }());
       }
@@ -276,10 +289,12 @@ class SpeedTestProvider extends ChangeNotifier {
     if (bestUrl != null) {
       _baseUrl = bestUrl!;
       _serverName = bestName!;
+      _serverSponsor = bestSponsor!;
       _log('Auto-selected optimal server: $_serverName');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('st_url', _baseUrl);
       await prefs.setString('st_name', _serverName);
+      await prefs.setString('st_sponsor', _serverSponsor);
     }
   }
 
