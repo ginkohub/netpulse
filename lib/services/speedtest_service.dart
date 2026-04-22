@@ -96,8 +96,6 @@ class SpeedTestProvider extends ChangeNotifier {
     fetchClientInfo();
     if (_availableServers.isEmpty) {
       findBestServer();
-    } else if (_selectedServer == null) {
-      await findBestServer();
     }
   }
 

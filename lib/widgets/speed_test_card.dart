@@ -147,7 +147,7 @@ class SpeedTestCard extends StatelessWidget {
                         st.availableServers.isNotEmpty &&
                                 st.selectedServer != null
                             ? st.selectedServer!.sponsor
-                            : '-',
+                            : st.serverSponsor,
                         Icons.business,
                       ),
                       _buildInfoItem('ISP', st.clientIsp, Icons.wifi),

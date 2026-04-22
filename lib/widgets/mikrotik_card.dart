@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:netpulse/services/log_service.dart';
+import 'package:netpulse/models/mikrotik.dart';
+import 'package:netpulse/utils/parser.dart';
+import 'package:netpulse/utils/formater.dart';
 import 'package:routeros_api/routeros_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,9 +37,9 @@ class _MikrotikCardState extends State<MikrotikCard> {
   bool _isDemoMode = false;
   bool _isLoading = false;
   String _status = 'Disconnected';
-  List<_MikrotikUser> _activeUsers = [];
-  List<_InterfaceStat> _interfaceStats = [];
-  _MikrotikSystem? _system;
+  List<MikrotikUser> _activeUsers = [];
+  List<InterfaceStat> _interfaceStats = [];
+  MikrotikSystem? _system;
   final LogProvider _log = LogProvider();
 
   RouterOSClient? _client;
@@ -129,30 +132,30 @@ class _MikrotikCardState extends State<MikrotikCard> {
     final ifStats = interfaces.where((name) => seen.add(name)).map((name) {
       final rx = (random % 100000000) + 1000000;
       final tx = (random % 50000000) + 500000;
-      return _InterfaceStat(
+      return InterfaceStat(
         name: name,
-        rxRate: _formatSpeed(rx.toDouble()),
-        txRate: _formatSpeed(tx.toDouble()),
+        rxRate: formatSpeed(rx),
+        txRate: formatSpeed(tx),
       );
     }).toList();
     final users = List.generate(userCount.clamp(0, 20), (i) {
       final idx = (random + i * 7) % 100;
-      return _MikrotikUser(
+      return MikrotikUser(
         id: 'demo_$i',
         name: 'user$i',
         address: '192.168.1.${10 + idx}',
         uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
-        bytesIn: _formatBytes('${random * 1000}'),
-        bytesOut: _formatBytes('${random * 500}'),
-        rxRate: _formatSpeed((random % 10000).toDouble()),
-        txRate: _formatSpeed((random % 5000).toDouble()),
+        bytesIn: formatBytes(random * 1000),
+        bytesOut: formatBytes(random * 500),
+        rxRate: formatSpeed(random % 10000),
+        txRate: formatSpeed(random % 5000),
       );
     });
     setState(() {
       _activeUsersCount = userCount;
       _interfaceStats = ifStats;
       _activeUsers = users;
-      _system = _MikrotikSystem(
+      _system = MikrotikSystem(
         name: 'Demo-MikroTik',
         uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
         version: '7.15.5',
@@ -342,7 +345,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
     if (!_isConnected || _client == null || _activeUsers.isNotEmpty) return;
     try {
       final hsActive = await _client!.talk(['/ip/hotspot/active/print']);
-      final users = <_MikrotikUser>[];
+      final users = <MikrotikUser>[];
       for (var item in hsActive) {
         final u = _mapToUser(item, 'Hotspot');
         if (u != null) users.add(u);
@@ -362,7 +365,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
         final id = identity.first;
         final res = resource.first;
         setState(() {
-          _system = _MikrotikSystem(
+          _system = MikrotikSystem(
             name: id['name'] ?? '-',
             uptime: res['uptime'] ?? '-',
             version: res['version'] ?? '-',
@@ -371,14 +374,12 @@ class _MikrotikCardState extends State<MikrotikCard> {
             boardName: res['board-name'] ?? '-',
             architectureName: res['architecture-name'] ?? '-',
             cpu: res['cpu'] ?? '-',
-            cpuCount: int.tryParse(res['cpu-count']?.toString() ?? '0') ?? 0,
-            cpuLoad: int.tryParse(res['cpu-load']?.toString() ?? '0') ?? 0,
-            freeHdd:
-                int.tryParse(res['free-hdd-space']?.toString() ?? '0') ?? 0,
-            totalHdd:
-                int.tryParse(res['total-hdd-space']?.toString() ?? '0') ?? 0,
-            freeRam: int.tryParse(res['free-memory']?.toString() ?? '0') ?? 0,
-            totalRam: int.tryParse(res['total-memory']?.toString() ?? '0') ?? 0,
+            cpuCount: parseIntSafe(res['cpu-count']),
+            cpuLoad: parseIntSafe(res['cpu-load']),
+            freeHdd: parseIntSafe(res['free-hdd-space']),
+            totalHdd: parseIntSafe(res['total-hdd-space']),
+            freeRam: parseIntSafe(res['free-memory']),
+            totalRam: parseIntSafe(res['total-memory']),
           );
         });
       }
@@ -391,24 +392,20 @@ class _MikrotikCardState extends State<MikrotikCard> {
     if (!_isConnected || _client == null || _isFetching) return;
     _isFetching = true;
     try {
-      // Get count only
       final countResult = await _client!.talk([
         '/ip/hotspot/active/print',
         '=count-only=',
       ]);
-      final hsActiveCount =
-          int.tryParse(countResult.first['ret']?.toString() ?? '0') ?? 0;
+      final hsActiveCount = parseCountOnly(countResult.first['ret']);
 
       final resources = await _client!.execute(
         '/system/resource/print',
         proplist: ['cpu-load', 'free-memory'],
       );
-      final cpuLoad =
-          int.tryParse(resources.first['cpu-load']?.toString() ?? '0') ?? 0;
-      final freeRAM =
-          int.tryParse(resources.first['free-memory']?.toString() ?? '0') ?? 0;
+      final cpuLoad = parseIntSafe(resources.first['cpu-load']);
+      final freeRAM = parseIntSafe(resources.first['free-memory']);
 
-      List<_InterfaceStat> ifStats = [];
+      List<InterfaceStat> ifStats = [];
       final interfaces = _monitoredInterfaces
           .split(',')
           .map((e) => e.trim())
@@ -426,10 +423,14 @@ class _MikrotikCardState extends State<MikrotikCard> {
               if (tr.isNotEmpty) {
                 final item = tr.first;
                 ifStats.add(
-                  _InterfaceStat(
+                  InterfaceStat(
                     name: item['name'] ?? iface,
-                    rxRate: _formatSpeed(item['rx-bits-per-second']),
-                    txRate: _formatSpeed(item['tx-bits-per-second']),
+                    rxRate: formatSpeed(
+                      parseIntSafe(item['rx-bits-per-second']),
+                    ),
+                    txRate: formatSpeed(
+                      parseIntSafe(item['tx-bits-per-second']),
+                    ),
                   ),
                 );
               }
@@ -465,7 +466,6 @@ class _MikrotikCardState extends State<MikrotikCard> {
         level: 'ERROR',
       );
       setState(() {
-        // _isConnected = false;
         _status = 'Disconnected';
       });
       _client = null;
@@ -473,7 +473,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
     _isFetching = false;
   }
 
-  _MikrotikUser? _mapToUser(Map<String, String> item, String type) {
+  MikrotikUser? _mapToUser(Map<String, String> item, String type) {
     final user = item['user'];
     if (user == null || user.isEmpty) return null;
     final addr = item['address'] ?? '-';
@@ -483,40 +483,26 @@ class _MikrotikCardState extends State<MikrotikCard> {
 
     String rx = '0 b', tx = '0 b';
     if (_prevBytesIn.containsKey(id)) {
-      rx = _formatSpeed((bIn - _prevBytesIn[id]!) * 8 / _refreshInterval);
-      tx = _formatSpeed((bOut - _prevBytesOut[id]!) * 8 / _refreshInterval);
+      rx = formatSpeed(
+        parseIntSafe((bIn - _prevBytesIn[id]!) * 8 / _refreshInterval),
+      );
+      tx = formatSpeed(
+        parseIntSafe((bOut - _prevBytesOut[id]!) * 8 / _refreshInterval),
+      );
     }
     _prevBytesIn[id] = bIn;
     _prevBytesOut[id] = bOut;
 
-    return _MikrotikUser(
+    return MikrotikUser(
       id: id,
       name: item['user'] ?? 'Unknown',
       address: addr,
       uptime: item['uptime'] ?? '',
-      bytesIn: _formatBytes(bIn.toString()),
-      bytesOut: _formatBytes(bOut.toString()),
+      bytesIn: formatBytes(parseIntSafe(bIn.toString())),
+      bytesOut: formatBytes(parseIntSafe(bOut.toString())),
       rxRate: rx,
       txRate: tx,
     );
-  }
-
-  String _formatBytes(String s) {
-    final b = double.tryParse(s) ?? 0;
-    if (b < 1024) return '${b.toStringAsFixed(0)} B';
-    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} K';
-    if (b < 1024 * 1024 * 1024) {
-      return '${(b / (1024 * 1024)).toStringAsFixed(1)} M';
-    }
-    return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} G';
-  }
-
-  String _formatSpeed(dynamic val) {
-    final bps = (val is double) ? val : double.tryParse(val.toString()) ?? 0;
-    if (bps <= 0) return '0 b';
-    if (bps < 1000) return '${bps.toStringAsFixed(0)} b';
-    if (bps < 1000000) return '${(bps / 1000).toStringAsFixed(1)} k';
-    return '${(bps / 1000000).toStringAsFixed(1)} M';
   }
 
   Widget _buildDetailGrid() {
@@ -551,12 +537,12 @@ class _MikrotikCardState extends State<MikrotikCard> {
         _buildDetailItem('LOAD', '${sys.cpuLoad}%', Icons.speed),
         _buildDetailItem(
           'RAM',
-          '${_formatBytes(sys.freeRam.toString())}/${_formatBytes(sys.totalRam.toString())}',
+          '${formatBytes(sys.freeRam)}/${formatBytes(sys.totalRam)}',
           Icons.memory,
         ),
         _buildDetailItem(
           'HDD',
-          '${_formatBytes(sys.freeHdd.toString())}/${_formatBytes(sys.totalHdd.toString())}',
+          '${formatBytes(sys.freeHdd)}/${formatBytes(sys.totalHdd)}',
           Icons.storage,
         ),
       ],
@@ -963,56 +949,4 @@ class _MikrotikCardState extends State<MikrotikCard> {
       child: card,
     );
   }
-}
-
-class _MikrotikUser {
-  final String id, name, address, uptime, bytesIn, bytesOut, rxRate, txRate;
-  _MikrotikUser({
-    required this.id,
-    required this.name,
-    required this.address,
-    required this.uptime,
-    required this.bytesIn,
-    required this.bytesOut,
-    required this.rxRate,
-    required this.txRate,
-  });
-}
-
-class _InterfaceStat {
-  final String name, rxRate, txRate;
-  _InterfaceStat({
-    required this.name,
-    required this.rxRate,
-    required this.txRate,
-  });
-}
-
-class _MikrotikSystem {
-  final String name,
-      uptime,
-      version,
-      buildTime,
-      factorySoftware,
-      boardName,
-      architectureName,
-      cpu;
-  int cpuLoad, freeRam;
-  final int cpuCount, freeHdd, totalHdd, totalRam;
-  _MikrotikSystem({
-    required this.name,
-    required this.uptime,
-    required this.version,
-    required this.buildTime,
-    required this.factorySoftware,
-    required this.boardName,
-    required this.architectureName,
-    required this.cpu,
-    required this.cpuCount,
-    required this.cpuLoad,
-    required this.freeHdd,
-    required this.totalHdd,
-    required this.freeRam,
-    required this.totalRam,
-  });
 }
