@@ -48,41 +48,43 @@ class SpeedTestCard extends StatelessWidget {
               ),
             ],
           ),
-          onTap: () => _showServerDialog(context, st),
-          body: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              const Icon(
-                Icons.signal_cellular_alt,
-                size: 18,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 6),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    st.serverSponsor,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      height: 1.0,
+          body: InkWell(
+            onTap: () => _showServerDialog(context, st),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                const Icon(
+                  Icons.signal_cellular_alt,
+                  size: 18,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 6),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      st.serverSponsor,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        height: 1.0,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    st.serverName,
-                    style: const TextStyle(
-                      fontSize: 8,
-                      color: Colors.grey,
-                      height: 1.0,
+                    Text(
+                      st.serverName,
+                      style: const TextStyle(
+                        fontSize: 8,
+                        color: Colors.grey,
+                        height: 1.0,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
           trailing: IconButton.filledTonal(
             onPressed: () {
@@ -462,7 +464,13 @@ class SpeedTestCard extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select Server'),
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        title: const Text(
+          'Select Server',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           height: 250,
@@ -471,13 +479,16 @@ class SpeedTestCard extends StatelessWidget {
             itemBuilder: (context, index) {
               if (index == 0) {
                 return ListTile(
-                  leading: const Icon(Icons.auto_awesome, size: 18),
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  leading: const Icon(Icons.auto_awesome, size: 16),
                   title: const Text(
-                    'Auto',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    'Auto Pick Best',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
                     '${st.availableServers.length} servers available',
+                    style: const TextStyle(fontSize: 10),
                   ),
                   selected: st.selectedServer == null,
                   onTap: () {
@@ -490,29 +501,32 @@ class SpeedTestCard extends StatelessWidget {
               final server = st.availableServers[index - 1];
               return ListTile(
                 dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                 leading: Icon(
                   server.latency < 50
                       ? Icons.signal_cellular_4_bar
                       : (server.latency < 100
                             ? Icons.signal_cellular_alt
                             : Icons.signal_cellular_alt_1_bar),
-                  size: 18,
+                  size: 12,
                   color: server.latency < 50
                       ? Colors.greenAccent
                       : (server.latency < 100
                             ? Colors.orangeAccent
                             : Colors.redAccent),
                 ),
-                title: Text(server.name, style: const TextStyle(fontSize: 13)),
+                title: Text(
+                  '${server.name} • ${server.latency < 9999 ? '${server.latency}ms' : '?'}',
+                  style: const TextStyle(fontSize: 13),
+                ),
                 subtitle: Text(
-                  '${server.sponsor} • ${server.latency < 9999 ? '${server.latency}ms' : '?'}',
+                  server.sponsor,
                   style: const TextStyle(fontSize: 10),
                 ),
                 trailing: st.selectedServer == server
                     ? const Icon(
                         Icons.check,
-                        size: 18,
+                        size: 12,
                         color: Colors.greenAccent,
                       )
                     : null,
@@ -527,7 +541,7 @@ class SpeedTestCard extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CLOSE'),
+            child: const Text('CLOSE', style: TextStyle(fontSize: 13)),
           ),
         ],
       ),

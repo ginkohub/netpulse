@@ -6,7 +6,7 @@ import 'package:netpulse/utils/parser.dart';
 import 'package:netpulse/utils/formater.dart';
 import 'package:routeros_api/routeros_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:netpulse/database/database.dart' show AppDatabase;
 import 'base_card.dart';
 
 class MikrotikCard extends StatefulWidget {
@@ -26,9 +26,10 @@ class MikrotikCard extends StatefulWidget {
 
 class _MikrotikCardState extends State<MikrotikCard> {
   String _host = '';
+  int _port = 8728;
   String _user = '';
   String _pass = '';
-  String _monitoredInterfaces = 'ether1';
+  String _monitoredInterfaces = '';
   int _refreshInterval = 2;
   int _activeUsersCount = 0;
   int _cpuLoad = 0;
@@ -75,16 +76,16 @@ class _MikrotikCardState extends State<MikrotikCard> {
   }
 
   Future<void> _loadConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'mk_$_configKey';
+    final card = await AppDatabase.getMikrotikCard(_configKey);
     setState(() {
-      _host = prefs.getString('${key}_host') ?? '';
-      _user = prefs.getString('${key}_user') ?? '';
-      _pass = prefs.getString('${key}_pass') ?? '';
-      _monitoredInterfaces = prefs.getString('${key}_ifaces') ?? 'ether1';
-      _refreshInterval = prefs.getInt('${key}_refresh') ?? 2;
-      _isMonitoring = prefs.getBool('${key}_monitor') ?? false;
-      _isDemoMode = prefs.getBool('${key}_demo') ?? false;
+      _host = card?['host'] ?? '';
+      _port = card?['port'] ?? 8728;
+      _user = card?['user'] ?? '';
+      _pass = card?['pass'] ?? '';
+      _monitoredInterfaces = card?['ifaces'] ?? '';
+      _refreshInterval = card?['refresh'] ?? 2;
+      _isMonitoring = card?['monitor'] ?? false;
+      _isDemoMode = card?['demo'] ?? false;
     });
     if (_isMonitoring && (_host.isNotEmpty || _isDemoMode)) {
       if (_isDemoMode) {
@@ -96,15 +97,16 @@ class _MikrotikCardState extends State<MikrotikCard> {
   }
 
   Future<void> _saveConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'mk_$_configKey';
-    await prefs.setString('${key}_host', _host);
-    await prefs.setString('${key}_user', _user);
-    await prefs.setString('${key}_pass', _pass);
-    await prefs.setString('${key}_ifaces', _monitoredInterfaces);
-    await prefs.setInt('${key}_refresh', _refreshInterval);
-    await prefs.setBool('${key}_monitor', _isMonitoring);
-    await prefs.setBool('${key}_demo', _isDemoMode);
+    await AppDatabase.setMikrotikCard(_configKey, {
+      'host': _host,
+      'port': _port,
+      'user': _user,
+      'pass': _pass,
+      'ifaces': _monitoredInterfaces,
+      'refresh': _refreshInterval,
+      'monitor': _isMonitoring,
+      'demo': _isDemoMode,
+    });
   }
 
   void _startDemoMode() {
@@ -136,6 +138,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
         name: name,
         rxRate: formatSpeed(rx),
         txRate: formatSpeed(tx),
+        enabled: true,
       );
     }).toList();
     final users = List.generate(userCount.clamp(0, 20), (i) {
@@ -170,6 +173,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
         totalHdd: 256 * 1024 * 1024,
         freeRam: (random % 200) * 1024 * 1024,
         totalRam: 512 * 1024 * 1024,
+        interfaces: {"ISP1": true, "ISP2": false},
       );
       _cpuLoad = random % 100;
       _status = 'Active: $userCount users';
@@ -178,6 +182,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
 
   void _showLoginDialog() {
     final hostCtrl = TextEditingController(text: _host);
+    final portCtrl = TextEditingController(text: _port.toString());
     final userCtrl = TextEditingController(text: _user);
     final passCtrl = TextEditingController(text: _pass);
     final ifaceCtrl = TextEditingController(text: _monitoredInterfaces);
@@ -188,7 +193,13 @@ class _MikrotikCardState extends State<MikrotikCard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('MikroTik Settings'),
+          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          title: const Text(
+            'MikroTik Settings',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -199,6 +210,14 @@ class _MikrotikCardState extends State<MikrotikCard> {
                   decoration: const InputDecoration(
                     labelText: 'IP Address',
                     hintText: '192.168.0.1',
+                  ),
+                ),
+                TextField(
+                  controller: portCtrl,
+                  enabled: !demoMode,
+                  decoration: const InputDecoration(
+                    labelText: 'Port',
+                    hintText: '8728',
                   ),
                 ),
                 TextField(
@@ -260,13 +279,17 @@ class _MikrotikCardState extends State<MikrotikCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('CANCEL'),
+              child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
             ),
-            ElevatedButton(
+            TextButton(
               onPressed: () {
                 final wasDemo = _isDemoMode;
                 setState(() {
                   _host = hostCtrl.text.trim();
+                  _port = parseIntSafe(
+                    portCtrl.text.trim(),
+                    defaultValue: 8728,
+                  );
                   _user = userCtrl.text.trim();
                   _pass = passCtrl.text.trim();
                   _monitoredInterfaces = ifaceCtrl.text.trim();
@@ -290,7 +313,13 @@ class _MikrotikCardState extends State<MikrotikCard> {
                   connect();
                 }
               },
-              child: Text(demoMode ? 'START DEMO' : 'SAVE & CONNECT'),
+              child: Text(
+                demoMode ? 'START DEMO' : 'SAVE & CONNECT',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -308,7 +337,12 @@ class _MikrotikCardState extends State<MikrotikCard> {
     try {
       _client?.close();
       await Future.delayed(const Duration(milliseconds: 200));
-      _client = RouterOSClient(host: _host, user: _user, password: _pass);
+      _client = RouterOSClient(
+        host: _host,
+        port: _port,
+        user: _user,
+        password: _pass,
+      );
       await _client!.connect();
       setState(() {
         _isConnected = true;
@@ -361,6 +395,16 @@ class _MikrotikCardState extends State<MikrotikCard> {
     try {
       final identity = await _client!.talk(['/system/identity/print']);
       final resource = await _client!.talk(['/system/resource/print']);
+
+      final ifaces = await _client!.talk(['/interface/print']);
+      final Map<String, bool> interfaces = {};
+      for (var item in ifaces) {
+        if (item['name'] != null) {
+          interfaces[item['name']!] =
+              item['running'] == 'true' && item['disabled'] == 'false';
+        }
+      }
+
       if (identity.isNotEmpty && resource.isNotEmpty) {
         final id = identity.first;
         final res = resource.first;
@@ -380,6 +424,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
             totalHdd: parseIntSafe(res['total-hdd-space']),
             freeRam: parseIntSafe(res['free-memory']),
             totalRam: parseIntSafe(res['total-memory']),
+            interfaces: interfaces,
           );
         });
       }
@@ -406,39 +451,52 @@ class _MikrotikCardState extends State<MikrotikCard> {
       final freeRAM = parseIntSafe(resources.first['free-memory']);
 
       List<InterfaceStat> ifStats = [];
-      final interfaces = _monitoredInterfaces
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
+      Map<String, bool> interfaces = {};
+      if (_system != null) {
+        interfaces = _system!.interfaces;
+      }
+
       if (interfaces.isNotEmpty) {
         try {
-          for (final iface in interfaces) {
-            try {
-              final tr = await _client!.talk([
-                '/interface/monitor-traffic',
-                '=interface=$iface',
-                '=once=',
-              ]);
-              if (tr.isNotEmpty) {
-                final item = tr.first;
-                ifStats.add(
-                  InterfaceStat(
-                    name: item['name'] ?? iface,
-                    rxRate: formatSpeed(
-                      parseIntSafe(item['rx-bits-per-second']),
+          for (final item in interfaces.entries) {
+            final iface = item.key;
+            if (!item.value) {
+              ifStats.add(
+                InterfaceStat(
+                  name: iface,
+                  rxRate: '-',
+                  txRate: '-',
+                  enabled: false,
+                ),
+              );
+            } else {
+              try {
+                final tr = await _client!.talk([
+                  '/interface/monitor-traffic',
+                  '=interface=$iface',
+                  '=once=',
+                ]);
+                if (tr.isNotEmpty) {
+                  final item = tr.first;
+                  ifStats.add(
+                    InterfaceStat(
+                      name: item['name'] ?? iface,
+                      rxRate: formatSpeed(
+                        parseIntSafe(item['rx-bits-per-second']),
+                      ),
+                      txRate: formatSpeed(
+                        parseIntSafe(item['tx-bits-per-second']),
+                      ),
+                      enabled: true,
                     ),
-                    txRate: formatSpeed(
-                      parseIntSafe(item['tx-bits-per-second']),
-                    ),
-                  ),
+                  );
+                }
+              } catch (e) {
+                _log.addLog(
+                  'Mikrotik($_host):interface $iface: ${e.toString()}',
+                  level: 'ERROR',
                 );
               }
-            } catch (e) {
-              _log.addLog(
-                'Mikrotik($_host):interface $iface: ${e.toString()}',
-                level: 'ERROR',
-              );
             }
           }
         } catch (e) {
@@ -511,9 +569,13 @@ class _MikrotikCardState extends State<MikrotikCard> {
       runSpacing: 10,
       children: [
         _buildDetailItem('HOST', _host.isNotEmpty ? _host : '-', Icons.lan),
+        _buildDetailItem(
+          'PORT',
+          _port.toString(),
+          Icons.settings_input_antenna,
+        ),
         _buildDetailItem('USER', _user.isNotEmpty ? _user : '-', Icons.person),
         _buildDetailItem('REFRESH', '${_refreshInterval}s', Icons.timer),
-        _buildDetailItem('ACTIVE', '$_activeUsersCount', Icons.people),
       ],
     );
   }
@@ -733,6 +795,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
                       const SizedBox(height: 4),
                       _buildSystemGrid(),
                     ],
+
                     if (_interfaceStats.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       const Text(
@@ -749,38 +812,67 @@ class _MikrotikCardState extends State<MikrotikCard> {
                         runSpacing: 4,
                         children: _interfaceStats
                             .map(
-                              (s) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(10),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Wrap(
-                                  spacing: 8,
+                              (s) => SizedBox(
+                                width: 130,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      s.name.toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.grey,
-                                      ),
+                                    Icon(
+                                      Icons.lan,
+                                      size: 14,
+                                      color: Colors.orangeAccent.withAlpha(150),
                                     ),
-                                    Text(
-                                      'R:${s.rxRate}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.greenAccent,
-                                      ),
-                                    ),
-                                    Text(
-                                      'T:${s.txRate}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.blueAccent,
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            s.enabled
+                                                ? s.name.toUpperCase()
+                                                : '${s.name.toUpperCase()} (inactive)',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.arrow_downward_rounded,
+                                                size: 10,
+                                                color: Colors.greenAccent,
+                                              ),
+                                              SizedBox(width: 2),
+                                              Text(
+                                                s.rxRate,
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontFamily: 'monospace',
+                                                ),
+                                              ),
+                                              SizedBox(width: 4),
+                                              Icon(
+                                                Icons.arrow_upward_rounded,
+                                                size: 10,
+                                                color: Colors.blueAccent,
+                                              ),
+                                              SizedBox(width: 2),
+                                              Text(
+                                                s.txRate,
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontFamily: 'monospace',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],

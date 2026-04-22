@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import '../database/database.dart' show AppDatabase;
 import 'package:xml/xml.dart' as xml;
 import 'log_service.dart';
 
@@ -100,16 +100,25 @@ class SpeedTestProvider extends ChangeNotifier {
   }
 
   Future<void> _loadConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    _baseUrl =
-        prefs.getString('st_url') ?? 'http://sgp.speedtest.clouvider.net';
-    _serverName = prefs.getString('st_name') ?? 'Select Server';
-    _serverSponsor = prefs.getString('st_sponsor') ?? '-';
-    final cachedServers = prefs.getString('st_servers');
+    final server = await AppDatabase.getSpeedtestSetting<Map<String, dynamic>>(
+      'server',
+    );
+    if (server != null) {
+      _baseUrl = server['url'] ?? 'http://sgp.speedtest.clouvider.net';
+      _serverName = server['name'] ?? 'Select Server';
+      _serverSponsor = server['sponsor'] ?? '-';
+    } else {
+      _baseUrl = 'http://sgp.speedtest.clouvider.net';
+      _serverName = 'Select Server';
+      _serverSponsor = '-';
+    }
+
+    final cachedServers = await AppDatabase.getSpeedtestSetting<List<dynamic>>(
+      'server_caches',
+    );
     if (cachedServers != null) {
       try {
-        final List<dynamic> list = jsonDecode(cachedServers);
-        _availableServers = list
+        _availableServers = cachedServers
             .map(
               (s) => SpeedTestServer(
                 url: s['url'] ?? '',
@@ -125,9 +134,8 @@ class SpeedTestProvider extends ChangeNotifier {
   }
 
   Future<void> _saveServers() async {
-    final prefs = await SharedPreferences.getInstance();
     final list = _availableServers.map((s) => s.toMap()).toList();
-    await prefs.setString('st_servers', jsonEncode(list));
+    await AppDatabase.setSpeedtestSetting('server_caches', list);
   }
 
   Future<void> fetchClientInfo() async {
@@ -160,10 +168,11 @@ class SpeedTestProvider extends ChangeNotifier {
     } else {
       _log('Server selection set to Auto');
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('st_url', _baseUrl);
-    await prefs.setString('st_name', _serverName);
-    await prefs.setString('st_sponsor', _serverSponsor);
+    await AppDatabase.setSpeedtestSetting('server', {
+      'url': _baseUrl,
+      'name': _serverName,
+      'sponsor': _serverSponsor,
+    });
     notifyListeners();
   }
 
@@ -289,10 +298,11 @@ class SpeedTestProvider extends ChangeNotifier {
       _serverName = bestName!;
       _serverSponsor = bestSponsor!;
       _log('Auto-selected optimal server: $_serverName');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('st_url', _baseUrl);
-      await prefs.setString('st_name', _serverName);
-      await prefs.setString('st_sponsor', _serverSponsor);
+      await AppDatabase.setSpeedtestSetting('server', {
+        'url': _baseUrl,
+        'name': _serverName,
+        'sponsor': _serverSponsor,
+      });
     }
   }
 

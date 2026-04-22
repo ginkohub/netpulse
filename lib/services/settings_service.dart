@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import '../database/database.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const List<String> _keys = [
@@ -88,11 +88,11 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<String> _getBackupJson() async {
-    final prefs = await SharedPreferences.getInstance();
+    final settings = await AppDatabase.getAppSettings();
     final Map<String, dynamic> backup = {};
     for (var key in _keys) {
-      if (prefs.containsKey(key)) {
-        backup[key] = prefs.get(key);
+      if (settings.containsKey(key)) {
+        backup[key] = settings[key];
       }
     }
     return jsonEncode(backup);
@@ -101,21 +101,9 @@ class SettingsProvider extends ChangeNotifier {
   Future<bool> _applyBackup(String jsonStr) async {
     try {
       final Map<String, dynamic> data = jsonDecode(jsonStr);
-      final prefs = await SharedPreferences.getInstance();
       for (var entry in data.entries) {
         if (_keys.contains(entry.key)) {
-          if (entry.value is List) {
-            await prefs.setStringList(
-              entry.key,
-              List<String>.from(entry.value),
-            );
-          } else if (entry.value is String) {
-            await prefs.setString(entry.key, entry.value);
-          } else if (entry.value is int) {
-            await prefs.setInt(entry.key, entry.value);
-          } else if (entry.value is bool) {
-            await prefs.setBool(entry.key, entry.value);
-          }
+          await AppDatabase.setSetting(entry.key, entry.value);
         }
       }
       notifyListeners();

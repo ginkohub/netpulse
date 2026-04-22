@@ -47,7 +47,13 @@ class WifiInfoCard extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('WiFi Settings'),
+          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          title: const Text(
+            'WiFi Settings',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -55,9 +61,10 @@ class WifiInfoCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Refresh Rate:'),
+                    const Text('Refresh Rate:', style: TextStyle(fontSize: 14)),
                     DropdownButton<int>(
                       value: currentInterval,
+                      style: const TextStyle(fontSize: 14, color: Colors.white),
                       items: [2, 5, 10, 30, 60]
                           .map(
                             (v) =>
@@ -70,14 +77,17 @@ class WifiInfoCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Demo Mode:'),
-                    Switch(
-                      value: demoMode,
-                      onChanged: (v) => setState(() => demoMode = v),
+                    const Text('Demo Mode:', style: TextStyle(fontSize: 14)),
+                    Transform.scale(
+                      scale: 0.8,
+                      child: Switch(
+                        value: demoMode,
+                        onChanged: (v) => setState(() => demoMode = v),
+                      ),
                     ),
                   ],
                 ),
@@ -87,9 +97,9 @@ class WifiInfoCard extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('CANCEL'),
+              child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
             ),
-            ElevatedButton(
+            TextButton(
               onPressed: () {
                 if (demoMode != wifi.isDemoMode) {
                   wifi.setDemoMode(demoMode);
@@ -99,7 +109,10 @@ class WifiInfoCard extends StatelessWidget {
                 }
                 Navigator.pop(context);
               },
-              child: Text(demoMode ? 'START DEMO' : 'SAVE'),
+              child: const Text(
+                'SAVE',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:wifi_iot/wifi_iot.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../database/database.dart' show AppDatabase;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
 import 'log_service.dart';
@@ -199,10 +199,9 @@ class WifiProvider extends ChangeNotifier {
   }
 
   Future<void> _loadConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    _refreshInterval = prefs.getInt('wifi_refresh') ?? 5;
-    _isMonitoring = prefs.getBool('wifi_monitor') ?? true;
-    _isDemoMode = prefs.getBool('wifi_demo') ?? false;
+    _refreshInterval = await AppDatabase.getWifiSetting<int>('interval') ?? 5;
+    _isMonitoring = await AppDatabase.getWifiSetting<bool>('monitor') ?? true;
+    _isDemoMode = await AppDatabase.getWifiSetting<bool>('demo') ?? false;
 
     if (_isDemoMode) {
       _startDemoMode();
@@ -221,10 +220,9 @@ class WifiProvider extends ChangeNotifier {
   }
 
   Future<void> _saveConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('wifi_refresh', _refreshInterval);
-    await prefs.setBool('wifi_monitor', _isMonitoring);
-    await prefs.setBool('wifi_demo', _isDemoMode);
+    await AppDatabase.setWifiSetting('interval', _refreshInterval);
+    await AppDatabase.setWifiSetting('monitor', _isMonitoring);
+    await AppDatabase.setWifiSetting('demo', _isDemoMode);
   }
 
   void _startDemoMode() {

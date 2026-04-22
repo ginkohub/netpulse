@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+import '../database/database.dart';
 
 class TestHistoryItem {
+  final String? id;
   final DateTime timestamp;
   final double download;
   final double upload;
@@ -16,6 +16,7 @@ class TestHistoryItem {
   final double? lon;
 
   TestHistoryItem({
+    this.id,
     required this.timestamp,
     required this.download,
     required this.upload,
@@ -27,38 +28,11 @@ class TestHistoryItem {
     this.lat,
     this.lon,
   });
-
-  Map<String, dynamic> toJson() => {
-    't': timestamp.millisecondsSinceEpoch,
-    'dl': download,
-    'ul': upload,
-    'lt': latency,
-    'jt': jitter,
-    'srv': server,
-    'spon': sponsor,
-    'isp': isp,
-    'lat': lat,
-    'lon': lon,
-  };
-
-  factory TestHistoryItem.fromJson(Map<String, dynamic> json) =>
-      TestHistoryItem(
-        timestamp: DateTime.fromMillisecondsSinceEpoch(json['t']),
-        download: json['dl'],
-        upload: json['ul'],
-        latency: json['lt'],
-        jitter: json['jt'],
-        server: json['srv'] ?? '',
-        sponsor: json['spon'] ?? '-',
-        isp: json['isp'] ?? '',
-        lat: json['lat'],
-        lon: json['lon'],
-      );
 }
 
 class HistoryProvider extends ChangeNotifier {
   List<TestHistoryItem> _items = [];
-  static const String _storageKey = 'test_history';
+  static const int _maxItems = 100;
 
   List<TestHistoryItem> get items => _items;
 
@@ -67,15 +41,27 @@ class HistoryProvider extends ChangeNotifier {
   }
 
   Future<void> _loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String>? data = prefs.getStringList(_storageKey);
-    if (data != null) {
-      _items = data
-          .map((e) => TestHistoryItem.fromJson(jsonDecode(e)))
-          .toList();
-      _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      notifyListeners();
-    }
+    final rows = await AppDatabase.getHistory(limit: _maxItems);
+    _items = rows
+        .map(
+          (row) => TestHistoryItem(
+            id: row['id'] as String?,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(
+              row['timestamp'] as int,
+            ),
+            download: row['download'] as double,
+            upload: row['upload'] as double,
+            latency: row['latency'] as int,
+            jitter: row['jitter'] as int,
+            server: row['server'] as String,
+            sponsor: row['sponsor'] as String,
+            isp: row['isp'] as String,
+            lat: row['lat'] as double?,
+            lon: row['lon'] as double?,
+          ),
+        )
+        .toList();
+    notifyListeners();
   }
 
   Future<void> addResult({
@@ -102,34 +88,44 @@ class HistoryProvider extends ChangeNotifier {
       debugPrint('Location fetching failed for history geotag');
     }
 
-    final newItem = TestHistoryItem(
-      timestamp: DateTime.now(),
-      download: download,
-      upload: upload,
-      sponsor: sponsor,
-      latency: latency,
-      jitter: jitter,
-      server: server,
-      isp: isp,
-      lat: lat,
-      lon: lon,
+    final now = DateTime.now();
+    final id = await AppDatabase.addHistory({
+      'timestamp': now.millisecondsSinceEpoch,
+      'download': download,
+      'upload': upload,
+      'latency': latency,
+      'jitter': jitter,
+      'server': server,
+      'sponsor': sponsor,
+      'isp': isp,
+      'lat': lat,
+      'lon': lon,
+    });
+
+    _items.insert(
+      0,
+      TestHistoryItem(
+        id: id,
+        timestamp: now,
+        download: download,
+        upload: upload,
+        latency: latency,
+        jitter: jitter,
+        server: server,
+        sponsor: sponsor,
+        isp: isp,
+        lat: lat,
+        lon: lon,
+      ),
     );
 
-    _items.insert(0, newItem);
-    if (_items.length > 100) _items.removeLast();
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _storageKey,
-      _items.map((e) => jsonEncode(e.toJson())).toList(),
-    );
+    if (_items.length > _maxItems) _items.removeLast();
     notifyListeners();
   }
 
-  void clearHistory() async {
+  Future<void> clearHistory() async {
+    await AppDatabase.clearHistory();
     _items = [];
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_storageKey);
     notifyListeners();
   }
 }

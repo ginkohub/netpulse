@@ -11,11 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
   dart_ping: ^9.0.1
   provider: ^6.1.5+1
   intl: ^0.20.2
-  shared_preferences: ^2.5.5
   connectivity_plus: 7.1.1
   wifi_iot: ^0.3.19+2
   routeros_api: ^0.1.4

@@ -33,13 +33,22 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add Host to Monitor'),
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        title: const Text(
+          'Add Host to Monitor',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
         content: TextField(
           controller: _hostController,
           autofocus: true,
+          style: const TextStyle(fontSize: 14),
           decoration: const InputDecoration(
+            isDense: true,
             hintText: 'e.g. 192.168.1.1 or google.com',
-            labelText: 'IP Address / Domain',
+            hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+            border: OutlineInputBorder(),
           ),
           onSubmitted: (_) {
             _addHost();
@@ -49,14 +58,17 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
+            child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () {
               _addHost();
               Navigator.pop(context);
             },
-            child: const Text('ADD'),
+            child: const Text(
+              'ADD',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -70,7 +82,13 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Backup & Restore'),
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        title: const Text(
+          'Backup & Restore',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

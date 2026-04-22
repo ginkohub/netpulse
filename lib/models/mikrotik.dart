@@ -24,11 +24,13 @@ class InterfaceStat {
   final String name;
   final String rxRate;
   final String txRate;
+  final bool enabled;
 
   const InterfaceStat({
     required this.name,
     required this.rxRate,
     required this.txRate,
+    required this.enabled,
   });
 }
 
@@ -47,6 +49,7 @@ class MikrotikSystem {
   final int freeHdd;
   final int totalHdd;
   final int totalRam;
+  final Map<String, bool> interfaces;
 
   MikrotikSystem({
     required this.name,
@@ -63,11 +66,13 @@ class MikrotikSystem {
     required this.totalHdd,
     required this.freeRam,
     required this.totalRam,
+    required this.interfaces,
   });
 }
 
 class MikrotikConfig {
   final String host;
+  final int port;
   final String user;
   final String pass;
   final String monitoredInterfaces;
@@ -77,6 +82,7 @@ class MikrotikConfig {
 
   const MikrotikConfig({
     this.host = '',
+    this.port = 8728,
     this.user = '',
     this.pass = '',
     this.monitoredInterfaces = 'ether1',
@@ -87,6 +93,7 @@ class MikrotikConfig {
 
   MikrotikConfig copyWith({
     String? host,
+    int? port,
     String? user,
     String? pass,
     String? monitoredInterfaces,
@@ -96,6 +103,7 @@ class MikrotikConfig {
   }) {
     return MikrotikConfig(
       host: host ?? this.host,
+      port: port ?? this.port,
       user: user ?? this.user,
       pass: pass ?? this.pass,
       monitoredInterfaces: monitoredInterfaces ?? this.monitoredInterfaces,

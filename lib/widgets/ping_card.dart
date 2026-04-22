@@ -30,7 +30,7 @@ class PingCard extends StatelessWidget {
           : (isOnline ? 'Online' : (item.error ?? 'Offline')),
       subtitleColor: statusColor.withAlpha(200),
       leading: Icon(Icons.radar, size: 24, color: statusColor),
-      onTap: () => provider.toggleHost(item.host),
+      onTap: () => provider.toggleHost(item.id),
       onDoubleTap: () => _showEditDialog(context, provider),
       trailing: item.isPaused
           ? null
@@ -72,30 +72,42 @@ class PingCard extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         title: const Text(
           'Edit Host Target',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
+          style: const TextStyle(fontSize: 14),
           decoration: const InputDecoration(
             isDense: true,
-            labelText: 'IP / Domain',
+            hintText: 'IP / Domain',
+            hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
             border: OutlineInputBorder(),
           ),
+          onSubmitted: (_) {
+            provider.updateHost(item.id, ctrl.text.trim());
+            Navigator.pop(context);
+          },
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
+            child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () {
-              provider.updateHost(item.host, ctrl.text.trim());
+              provider.updateHost(item.id, ctrl.text.trim());
               Navigator.pop(context);
             },
-            child: const Text('SAVE'),
+            child: const Text(
+              'SAVE',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

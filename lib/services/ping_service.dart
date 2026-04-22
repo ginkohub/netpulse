@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:dart_ping/dart_ping.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../database/database.dart' show AppDatabase;
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class PingResultModel {
+  final String id;
   final String host;
   int? latency;
   bool isOnline;
@@ -13,6 +13,7 @@ class PingResultModel {
   bool isPaused;
 
   PingResultModel({
+    required this.id,
     required this.host,
     this.latency,
     this.isOnline = false,
@@ -25,7 +26,7 @@ enum DashboardItemType { wifi, mikrotik, speedtest, ping }
 
 class DashboardItem {
   final DashboardItemType type;
-  final String? value; // host for ping, null for others
+  final String? value; // ID or host
 
   DashboardItem({required this.type, this.value});
 
@@ -51,7 +52,7 @@ class DashboardItem {
 class PingProvider extends ChangeNotifier {
   final Map<String, PingResultModel> _results = {};
   List<DashboardItem> _items = [];
-  static const String _storageKey = 'dashboard_items';
+  static const String _storageKey = 'cards';
   static const String _reorderEnabledKey = 'reorder_enabled';
 
   bool _isReorderEnabled = false;
@@ -64,7 +65,7 @@ class PingProvider extends ChangeNotifier {
 
   List<DashboardItem> get items => _items;
 
-  PingResultModel? getResult(String host) => _results[host];
+  PingResultModel? getResult(String id) => _results[id];
 
   PingProvider() {
     _loadDashboard();
@@ -89,23 +90,27 @@ class PingProvider extends ChangeNotifier {
   void toggleReorder() async {
     _isReorderEnabled = !_isReorderEnabled;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_reorderEnabledKey, _isReorderEnabled);
+    await AppDatabase.setSetting(_reorderEnabledKey, _isReorderEnabled);
   }
 
   Future<void> _loadDashboard() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isReorderEnabled = prefs.getBool(_reorderEnabledKey) ?? false;
+    _isReorderEnabled =
+        await AppDatabase.getSetting<bool>(_reorderEnabledKey) ?? false;
 
-    final saved = prefs.getStringList(_storageKey);
+    final saved = await AppDatabase.getSetting<List<dynamic>>(_storageKey);
 
     if (saved == null || saved.isEmpty) {
       _items = [];
     } else {
-      _items = saved.map((s) => DashboardItem.fromJson(jsonDecode(s))).toList();
+      _items = saved
+          .map((s) => DashboardItem.fromJson(Map<String, dynamic>.from(s)))
+          .toList();
+      final pingConfigs = await AppDatabase.getPing();
       for (var item in _items) {
         if (item.type == DashboardItemType.ping) {
-          _results[item.value!] = PingResultModel(host: item.value!);
+          final config = pingConfigs[item.value];
+          final host = config?['host'] ?? item.value ?? 'unknown';
+          _results[item.value!] = PingResultModel(id: item.value!, host: host);
         }
       }
     }
@@ -114,38 +119,58 @@ class PingProvider extends ChangeNotifier {
   }
 
   Future<void> _saveToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = _items.map((i) => jsonEncode(i.toJson())).toList();
-    await prefs.setStringList(_storageKey, data);
+    final data = _items.map((i) => i.toJson()).toList();
+    await AppDatabase.setSetting(_storageKey, data);
   }
 
-  void addHost(String host, {bool save = true}) {
-    if (_results.containsKey(host) || host.isEmpty) return;
-    _results[host] = PingResultModel(host: host);
-    _items.add(DashboardItem(type: DashboardItemType.ping, value: host));
-    if (save) _saveToPrefs();
+  void addHost(String host, {bool save = true}) async {
+    if (host.isEmpty) return;
+    final id = 'ping_${DateTime.now().millisecondsSinceEpoch}';
+    _results[id] = PingResultModel(id: id, host: host);
+    _items.add(DashboardItem(type: DashboardItemType.ping, value: id));
+    if (save) {
+      await AppDatabase.setPingCard(id, {'host': host});
+      _saveToPrefs();
+    }
     notifyListeners();
   }
 
-  void removeHost(String host) {
-    _results.remove(host);
+  void removeHost(String id) async {
+    _results.remove(id);
     _items.removeWhere(
-      (i) => i.type == DashboardItemType.ping && i.value == host,
+      (i) => i.type == DashboardItemType.ping && i.value == id,
     );
+    await AppDatabase.removePingCard(id);
     _saveToPrefs();
     notifyListeners();
   }
 
-  void removeItem(DashboardItemType type, {String? value, int? index}) {
+  void removeItem(DashboardItemType type, {String? value, int? index}) async {
     if (type == DashboardItemType.ping && value != null) {
       removeHost(value);
     } else if (index != null && index >= 0 && index < _items.length) {
+      final item = _items[index];
+      if (item.type == DashboardItemType.ping && item.value != null) {
+        await AppDatabase.removePingCard(item.value!);
+        _results.remove(item.value);
+      } else if (item.type == DashboardItemType.mikrotik &&
+          item.value != null) {
+        await AppDatabase.removeMikrotikCard(item.value!);
+      }
       _items.removeAt(index);
       _saveToPrefs();
       notifyListeners();
     } else {
       final idx = _items.indexWhere((i) => i.type == type && i.value == value);
       if (idx != -1) {
+        final item = _items[idx];
+        if (item.type == DashboardItemType.ping && item.value != null) {
+          await AppDatabase.removePingCard(item.value!);
+          _results.remove(item.value);
+        } else if (item.type == DashboardItemType.mikrotik &&
+            item.value != null) {
+          await AppDatabase.removeMikrotikCard(item.value!);
+        }
         _items.removeAt(idx);
         _saveToPrefs();
         notifyListeners();
@@ -174,31 +199,28 @@ class PingProvider extends ChangeNotifier {
     }
   }
 
-  void removeAllHosts() {
+  void removeAllHosts() async {
+    for (var item in _items) {
+      if (item.type == DashboardItemType.ping && item.value != null) {
+        await AppDatabase.removePingCard(item.value!);
+      }
+    }
     _results.clear();
     _items.removeWhere((i) => i.type == DashboardItemType.ping);
     _saveToPrefs();
     notifyListeners();
   }
 
-  void updateHost(String oldHost, String newHost) {
-    final existing = _results.remove(oldHost);
+  void updateHost(String id, String newHost) async {
+    final existing = _results[id];
     if (existing != null) {
-      _results[newHost] = PingResultModel(
+      _results[id] = PingResultModel(
+        id: id,
         host: newHost,
         latency: existing.latency,
         isOnline: existing.isOnline,
       );
-      final idx = _items.indexWhere(
-        (i) => i.type == DashboardItemType.ping && i.value == oldHost,
-      );
-      if (idx != -1) {
-        _items[idx] = DashboardItem(
-          type: DashboardItemType.ping,
-          value: newHost,
-        );
-      }
-      _saveToPrefs();
+      await AppDatabase.setPingCard(id, {'host': newHost});
       notifyListeners();
     }
   }
@@ -213,18 +235,18 @@ class PingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleHost(String host) {
-    _results[host]?.isPaused = !(_results[host]?.isPaused ?? false);
+  void toggleHost(String id) {
+    _results[id]?.isPaused = !(_results[id]?.isPaused ?? false);
     notifyListeners();
   }
 
-  void pauseHost(String host) {
-    _results[host]?.isPaused = true;
+  void pauseHost(String id) {
+    _results[id]?.isPaused = true;
     notifyListeners();
   }
 
-  void resumeHost(String host) {
-    _results[host]?.isPaused = false;
+  void resumeHost(String id) {
+    _results[id]?.isPaused = false;
     notifyListeners();
   }
 
@@ -248,16 +270,16 @@ class PingProvider extends ChangeNotifier {
         continue;
       }
 
-      final hosts = _results.keys.toList();
-      if (hosts.isEmpty) {
+      final ids = _results.keys.toList();
+      if (ids.isEmpty) {
         await Future.delayed(const Duration(seconds: 2));
         continue;
       }
 
-      for (int i = 0; i < hosts.length; i += 3) {
+      for (int i = 0; i < ids.length; i += 3) {
         if (!_hasNetwork) break;
-        final batch = hosts.skip(i).take(3);
-        final futures = batch.map((h) => _pingSingleHost(h)).toList();
+        final batch = ids.skip(i).take(3);
+        final futures = batch.map((id) => _pingSingleHost(id)).toList();
         await Future.wait(futures);
         await Future.delayed(const Duration(milliseconds: 100));
       }
@@ -266,12 +288,12 @@ class PingProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _pingSingleHost(String host) async {
-    final result = _results[host];
+  Future<void> _pingSingleHost(String id) async {
+    final result = _results[id];
     if (result == null || result.isPaused || !_hasNetwork) return;
 
     try {
-      final ping = Ping(host, count: 1, timeout: 2);
+      final ping = Ping(result.host, count: 1, timeout: 2);
       final completer = Completer<void>();
       bool hasSuccess = false;
 
