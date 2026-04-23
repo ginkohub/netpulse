@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:netpulse/services/log_service.dart';
 import 'package:netpulse/models/mikrotik.dart';
 import 'package:netpulse/utils/parser.dart';
@@ -208,7 +209,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
                   controller: hostCtrl,
                   enabled: !demoMode,
                   decoration: const InputDecoration(
-                    labelText: 'IP Address',
+                    labelText: 'Host Address',
                     hintText: '192.168.0.1',
                   ),
                 ),
@@ -219,6 +220,7 @@ class _MikrotikCardState extends State<MikrotikCard> {
                     labelText: 'Port',
                     hintText: '8728',
                   ),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 ),
                 TextField(
                   controller: userCtrl,
