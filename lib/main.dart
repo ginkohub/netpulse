@@ -4,7 +4,7 @@ import 'services/ping_service.dart';
 import 'services/wifi_service.dart';
 import 'services/speedtest_service.dart';
 import 'services/settings_service.dart';
-import 'services/history_service.dart';
+import 'services/speedtest_history.dart';
 import 'services/log_service.dart';
 import 'services/update_service.dart';
 import 'pages/home_page.dart';

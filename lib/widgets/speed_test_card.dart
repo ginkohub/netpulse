@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../services/speedtest_service.dart';
-import '../services/history_service.dart';
+import '../services/speedtest_history.dart';
 import 'base_card.dart';
 
 class SpeedTestCard extends StatelessWidget {
@@ -156,21 +156,21 @@ class SpeedTestCard extends StatelessWidget {
                           lineTouchData: LineTouchData(
                             touchTooltipData: LineTouchTooltipData(
                               getTooltipColor: (touchedSpot) =>
-                                  Colors.blueGrey.withOpacity(0.8),
+                                  Colors.blueGrey.withValues(alpha: 0.8),
                               getTooltipItems:
                                   (List<LineBarSpot> touchedBarSpots) {
-                                return touchedBarSpots.map((barSpot) {
-                                  final flSpot = barSpot;
-                                  return LineTooltipItem(
-                                    '${flSpot.y.toStringAsFixed(1)} Mbps',
-                                    const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 10,
-                                    ),
-                                  );
-                                }).toList();
-                              },
+                                    return touchedBarSpots.map((barSpot) {
+                                      final flSpot = barSpot;
+                                      return LineTooltipItem(
+                                        '${flSpot.y.toStringAsFixed(1)} Mbps',
+                                        const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                        ),
+                                      );
+                                    }).toList();
+                                  },
                             ),
                           ),
                           gridData: const FlGridData(
