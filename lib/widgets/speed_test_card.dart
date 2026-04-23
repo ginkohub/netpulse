@@ -48,42 +48,35 @@ class SpeedTestCard extends StatelessWidget {
               ),
             ],
           ),
-          body: InkWell(
-            onTap: () => _showServerDialog(context, st),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                const Icon(
-                  Icons.signal_cellular_alt,
-                  size: 18,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 6),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      st.serverSponsor,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        height: 1.0,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+
+          body: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _showServerDialog(context, st),
+              icon: const Icon(Icons.signal_cellular_alt, size: 18),
+              label: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    st.serverSponsor,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      height: 1.0,
                     ),
-                    Text(
-                      st.serverName,
-                      style: const TextStyle(
-                        fontSize: 8,
-                        color: Colors.grey,
-                        height: 1.0,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    st.serverName,
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Colors.grey,
+                      height: 1.0,
                     ),
-                  ],
-                ),
-              ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ),
           trailing: IconButton.filledTonal(
@@ -117,24 +110,6 @@ class SpeedTestCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  InkWell(
-                    onTap: () => _showServerDialog(context, st),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.dns, size: 12, color: Colors.blueAccent),
-                        SizedBox(width: 4),
-                        Text(
-                          'Server Info - Tap to change',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueAccent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 16,
                     runSpacing: 8,
@@ -143,6 +118,7 @@ class SpeedTestCard extends StatelessWidget {
                         'Location',
                         st.serverName,
                         Icons.location_on,
+                        onTap: () => {_showServerDialog(context, st)},
                       ),
                       _buildInfoItem(
                         'Sponsor',
@@ -177,6 +153,26 @@ class SpeedTestCard extends StatelessWidget {
                       height: 120,
                       child: LineChart(
                         LineChartData(
+                          lineTouchData: LineTouchData(
+                            touchTooltipData: LineTouchTooltipData(
+                              getTooltipColor: (touchedSpot) =>
+                                  Colors.blueGrey.withOpacity(0.8),
+                              getTooltipItems:
+                                  (List<LineBarSpot> touchedBarSpots) {
+                                return touchedBarSpots.map((barSpot) {
+                                  final flSpot = barSpot;
+                                  return LineTooltipItem(
+                                    '${flSpot.y.toStringAsFixed(1)} Mbps',
+                                    const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 10,
+                                    ),
+                                  );
+                                }).toList();
+                              },
+                            ),
+                          ),
                           gridData: const FlGridData(
                             show: true,
                             drawVerticalLine: false,
@@ -280,7 +276,7 @@ class SpeedTestCard extends StatelessWidget {
                                   DataCell(
                                     Text(
                                       DateFormat(
-                                        'HH:mm',
+                                        'dd/MM/yy HH:mm',
                                       ).format(item.timestamp),
                                       style: const TextStyle(fontSize: 10),
                                     ),
@@ -423,7 +419,12 @@ class SpeedTestCard extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoItem(String label, String value, IconData icon) {
+  Widget _buildInfoItem(
+    String label,
+    String value,
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
     return SizedBox(
       width: 120,
       child: Row(
@@ -443,14 +444,38 @@ class SpeedTestCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'monospace',
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (onTap != null)
+                      IconButton(
+                        iconSize: 10,
+                        onPressed: onTap,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                          maxWidth: 20,
+                          maxHeight: 20,
+                        ),
+                        icon: Icon(
+                          Icons.arrow_forward_ios,
+                          size: 10,
+                          color: Colors.blueAccent.withAlpha(180),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
