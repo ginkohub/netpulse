@@ -372,7 +372,7 @@ class SpeedTestCard extends StatelessWidget {
     };
 
     return SizedBox(
-      width: isBig ? 52 : 32,
+      width: isBig ? 58 : 32,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
