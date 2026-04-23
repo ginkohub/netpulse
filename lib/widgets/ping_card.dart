@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../services/ping_service.dart';
 import 'base_card.dart';
 
@@ -24,7 +25,7 @@ class PingCard extends StatelessWidget {
               : Colors.redAccent);
 
     return BaseCard(
-      title: item.host,
+      title: item.name != null && item.name!.isNotEmpty ? item.name : item.host,
       subtitle: item.isPaused
           ? 'Paused'
           : (isOnline ? 'Online' : (item.error ?? 'Offline')),
@@ -46,7 +47,7 @@ class PingCard extends StatelessWidget {
                 children: [
                   Text(
                     item.latency != null ? '${item.latency}' : '--',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -64,11 +65,194 @@ class PingCard extends StatelessWidget {
                 ],
               ),
             ),
+      children: [
+        if (item.history.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStats(item),
+                const SizedBox(height: 12),
+                const Text(
+                  'Latency Trend (ms)',
+                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 100,
+                  child: LineChart(
+                    LineChartData(
+                      minY: 0,
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (touchedSpot) =>
+                              Colors.blueGrey.withAlpha(200),
+                          getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+                            return touchedBarSpots.map((barSpot) {
+                              if (barSpot.y == 0) {
+                                return const LineTooltipItem(
+                                  'TIMEOUT',
+                                  TextStyle(
+                                    color: Colors.redAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 10,
+                                  ),
+                                );
+                              }
+                              return LineTooltipItem(
+                                '${barSpot.y.toInt()} ms',
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
+                      gridData: const FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: 50,
+                      ),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            interval: 100,
+                            getTitlesWidget: _leftTitleWidgets,
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border(
+                          bottom: BorderSide(color: Colors.white10),
+                          left: BorderSide(color: Colors.white10),
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: item.history
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => FlSpot(
+                                  e.key.toDouble(),
+                                  e.value.toDouble(),
+                                ),
+                              )
+                              .toList(),
+                          isCurved: true,
+                          gradient: const LinearGradient(
+                            colors: [
+                              Colors.greenAccent,
+                              Colors.yellowAccent,
+                              Colors.orangeAccent,
+                              Colors.redAccent,
+                            ],
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                          ),
+                          barWidth: 2,
+                          dotData: const FlDotData(show: false),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _leftTitleWidgets(double value, TitleMeta meta) {
+    return SideTitleWidget(
+      meta: meta,
+      space: 4,
+      child: Text(
+        value.toInt().toString(),
+        style: const TextStyle(fontSize: 8, color: Colors.grey),
+      ),
+    );
+  }
+
+  Widget _buildStats(PingResultModel item) {
+    final validPings = item.history.where((l) => l > 0).toList();
+    final lossCount = item.history.where((l) => l == 0).length;
+    final lossPercent = (lossCount / item.history.length * 100).toStringAsFixed(
+      0,
+    );
+    final avg = validPings.isEmpty
+        ? 0
+        : (validPings.reduce((a, b) => a + b) / validPings.length).round();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _statItem(
+          'Packet Loss',
+          '$lossPercent%',
+          lossCount > 0 ? Colors.redAccent : Colors.grey,
+        ),
+        _statItem('Average', '${avg}ms', Colors.grey),
+        _statItem('Samples', '${item.history.length}', Colors.grey),
+      ],
+    );
+  }
+
+  Widget _statItem(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 
   void _showEditDialog(BuildContext context, PingProvider provider) {
-    final ctrl = TextEditingController(text: item.host);
+    final ctrlHost = TextEditingController(text: item.host);
+    final ctrlName = TextEditingController(text: item.name);
+
+    void onSave() {
+      final newName = ctrlName.text.trim();
+      final newHost = ctrlHost.text.trim().toLowerCase();
+
+      if (newHost.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Host cannot be empty')),
+        );
+        return;
+      }
+
+      if (newName != item.name || newHost != item.host) {
+        provider.updatePing(item.id, host: newHost, name: newName);
+      }
+      Navigator.pop(context);
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -76,23 +260,36 @@ class PingCard extends StatelessWidget {
         contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         title: const Text(
-          'Edit Host Target',
+          'Edit Ping',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(fontSize: 14),
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'IP / Domain',
-            hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (_) {
-            provider.updateHost(item.id, ctrl.text.trim());
-            Navigator.pop(context);
-          },
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: ctrlName,
+              autofocus: true,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Optional',
+                labelText: 'Name',
+                hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                border: UnderlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 4),
+            TextFormField(
+              controller: ctrlHost,
+              style: const TextStyle(fontSize: 14),
+              decoration: const InputDecoration(
+                isDense: true,
+                labelText: 'Host',
+                hintText: 'google.com',
+                hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                border: UnderlineInputBorder(),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -100,10 +297,7 @@ class PingCard extends StatelessWidget {
             child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
           ),
           TextButton(
-            onPressed: () {
-              provider.updateHost(item.id, ctrl.text.trim());
-              Navigator.pop(context);
-            },
+            onPressed: onSave,
             child: const Text(
               'SAVE',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),

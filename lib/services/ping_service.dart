@@ -6,27 +6,31 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 class PingResultModel {
   final String id;
-  final String host;
+  String host;
+  String? name;
   int? latency;
   bool isOnline;
   String? error;
   bool isPaused;
+  List<int> history;
 
   PingResultModel({
     required this.id,
     required this.host,
+    this.name,
     this.latency,
     this.isOnline = false,
     this.error,
     this.isPaused = false,
-  });
+    List<int>? history,
+  }) : history = history ?? [];
 }
 
 enum DashboardItemType { wifi, mikrotik, speedtest, ping }
 
 class DashboardItem {
   final DashboardItemType type;
-  final String? value; // ID or host
+  final String? value;
 
   DashboardItem({required this.type, this.value});
 
@@ -110,7 +114,13 @@ class PingProvider extends ChangeNotifier {
         if (item.type == DashboardItemType.ping) {
           final config = pingConfigs[item.value];
           final host = config?['host'] ?? item.value ?? 'unknown';
-          _results[item.value!] = PingResultModel(id: item.value!, host: host);
+          _results[item.value!] = PingResultModel(
+            id: item.value!,
+            name: config?['name'],
+            host: host,
+            isPaused: config?['isPaused'] ?? false,
+            history: [],
+          );
         }
       }
     }
@@ -125,11 +135,40 @@ class PingProvider extends ChangeNotifier {
 
   void addHost(String host, {bool save = true}) async {
     if (host.isEmpty) return;
+
+    // Check if host already exists to reset history instead of adding duplicate
+    String? existingId;
+    for (var entry in _results.entries) {
+      if (entry.value.host.toLowerCase() == host.toLowerCase()) {
+        existingId = entry.key;
+        break;
+      }
+    }
+
+    if (existingId != null) {
+      final existing = _results[existingId]!;
+      _results[existingId] = PingResultModel(
+        id: existing.id,
+        host: existing.host,
+        name: existing.name,
+        isPaused: existing.isPaused,
+      );
+      if (save) {
+        await AppDatabase.setPingCard(existingId, {
+          'host': existing.host,
+          'name': existing.name,
+          'isPaused': existing.isPaused,
+        });
+      }
+      notifyListeners();
+      return;
+    }
+
     final id = 'ping_${DateTime.now().millisecondsSinceEpoch}';
     _results[id] = PingResultModel(id: id, host: host);
     _items.add(DashboardItem(type: DashboardItemType.ping, value: id));
     if (save) {
-      await AppDatabase.setPingCard(id, {'host': host});
+      await AppDatabase.setPingCard(id, {'host': host, 'isPaused': false});
       _saveToPrefs();
     }
     notifyListeners();
@@ -211,16 +250,26 @@ class PingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateHost(String id, String newHost) async {
+  void updatePing(String id, {String? name, String? host}) async {
     final existing = _results[id];
     if (existing != null) {
-      _results[id] = PingResultModel(
-        id: id,
-        host: newHost,
-        latency: existing.latency,
-        isOnline: existing.isOnline,
-      );
-      await AppDatabase.setPingCard(id, {'host': newHost});
+      bool hostChanged =
+          host != null && host.toLowerCase() != existing.host.toLowerCase();
+
+      existing.name = name ?? existing.name;
+      if (host != null) {
+        existing.host = host;
+        if (hostChanged) {
+          existing.history.clear();
+          existing.latency = null;
+        }
+      }
+
+      await AppDatabase.setPingCard(id, {
+        'name': existing.name,
+        'host': existing.host,
+        'isPaused': existing.isPaused,
+      });
       notifyListeners();
     }
   }
@@ -235,19 +284,30 @@ class PingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _updatePausedState(String id, bool paused) async {
+    final result = _results[id];
+    if (result != null) {
+      result.isPaused = paused;
+      await AppDatabase.setPingCard(id, {
+        'name': result.name,
+        'host': result.host,
+        'isPaused': result.isPaused,
+      });
+      notifyListeners();
+    }
+  }
+
   void toggleHost(String id) {
-    _results[id]?.isPaused = !(_results[id]?.isPaused ?? false);
-    notifyListeners();
+    final current = _results[id]?.isPaused ?? false;
+    _updatePausedState(id, !current);
   }
 
   void pauseHost(String id) {
-    _results[id]?.isPaused = true;
-    notifyListeners();
+    _updatePausedState(id, true);
   }
 
   void resumeHost(String id) {
-    _results[id]?.isPaused = false;
-    notifyListeners();
+    _updatePausedState(id, false);
   }
 
   Future<void> reloadHosts() async {
@@ -311,11 +371,23 @@ class PingProvider extends ChangeNotifier {
             hasSuccess = false;
           }
         },
-        onDone: () {
+        onDone: () async {
           if (!hasSuccess) {
             result.isOnline = false;
             result.latency = null;
+            result.error ??= 'No Response';
+
+            // Record failure as 0 for heatmap
+            result.history.add(0);
+          } else {
+            // Update history with latency
+            result.history.add(result.latency!);
           }
+
+          if (result.history.length > 60) {
+            result.history.removeAt(0);
+          }
+
           completer.complete();
         },
       );
