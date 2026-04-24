@@ -3,6 +3,7 @@ import 'package:dart_ping/dart_ping.dart';
 import 'package:flutter/material.dart';
 import '../database/database.dart' show AppDatabase;
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'log_service.dart';
 
 class PingResultModel {
@@ -14,6 +15,9 @@ class PingResultModel {
   String? error;
   bool isPaused;
   bool keepAliveInBackground;
+  bool notifyOnTimeout;
+  bool notifyOnHighLatency;
+  int latencyThresholdPercent;
   int interval;
   DateTime? lastPingTime;
   List<int> history;
@@ -27,10 +31,18 @@ class PingResultModel {
     this.error,
     this.isPaused = false,
     this.keepAliveInBackground = false,
+    this.notifyOnTimeout = false,
+    this.notifyOnHighLatency = false,
+    this.latencyThresholdPercent = 50,
     this.interval = 1,
     this.lastPingTime,
     List<int>? history,
   }) : history = history ?? [];
+
+  double get averageLatency {
+    if (history.isEmpty) return 0;
+    return history.reduce((a, b) => a + b) / history.length;
+  }
 }
 
 enum DashboardItemType { wifi, mikrotik, speedtest, ping }
@@ -70,6 +82,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _pauseOnBackgroundKey = 'pause_on_background';
   static const String _demoModeKey = 'demo_mode';
 
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
   bool _isReorderEnabled = false;
   bool get isReorderEnabled => _isReorderEnabled;
 
@@ -94,10 +109,42 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   PingProvider({this.logger}) {
     WidgetsBinding.instance.addObserver(this);
+    _initNotifications();
     _loadDashboard();
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
       _checkConnectivity(results);
     });
+  }
+
+  Future<void> _initNotifications() async {
+    const androidSettings = AndroidInitializationSettings('launcher_icon');
+    const linuxSettings = LinuxInitializationSettings(defaultActionName: 'Open');
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      linux: linuxSettings,
+    );
+    await _notificationsPlugin.initialize(settings: initSettings);
+  }
+
+  Future<void> _sendNotification(String title, String body) async {
+    const androidDetails = AndroidNotificationDetails(
+      'ping_alerts',
+      'Ping Alerts',
+      channelDescription: 'Notifications for ping timeouts and high latency',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const linuxDetails = LinuxNotificationDetails();
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      linux: linuxDetails,
+    );
+    await _notificationsPlugin.show(
+      id: DateTime.now().millisecondsSinceEpoch.hashCode,
+      title: title,
+      body: body,
+      notificationDetails: notificationDetails,
+    );
   }
 
   Future<void> _checkConnectivity(List<ConnectivityResult> results) async {
@@ -146,6 +193,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
             host: host,
             isPaused: config?['isPaused'] ?? false,
             keepAliveInBackground: config?['keepAliveInBackground'] ?? false,
+            notifyOnTimeout: config?['notifyOnTimeout'] ?? false,
+            notifyOnHighLatency: config?['notifyOnHighLatency'] ?? false,
+            latencyThresholdPercent: config?['latencyThresholdPercent'] ?? 50,
             interval: config?['interval'] ?? _pingInterval,
             history: [],
           );
@@ -180,6 +230,10 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         host: existing.host,
         name: existing.name,
         isPaused: existing.isPaused,
+        keepAliveInBackground: existing.keepAliveInBackground,
+        notifyOnTimeout: existing.notifyOnTimeout,
+        notifyOnHighLatency: existing.notifyOnHighLatency,
+        latencyThresholdPercent: existing.latencyThresholdPercent,
         interval: existing.interval,
       );
       if (save) {
@@ -187,6 +241,10 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
           'host': existing.host,
           'name': existing.name,
           'isPaused': existing.isPaused,
+          'keepAliveInBackground': existing.keepAliveInBackground,
+          'notifyOnTimeout': existing.notifyOnTimeout,
+          'notifyOnHighLatency': existing.notifyOnHighLatency,
+          'latencyThresholdPercent': existing.latencyThresholdPercent,
           'interval': existing.interval,
         });
       }
@@ -195,12 +253,23 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final id = 'ping_${DateTime.now().millisecondsSinceEpoch}';
-    _results[id] = PingResultModel(id: id, host: host, interval: _pingInterval);
+    _results[id] = PingResultModel(
+      id: id,
+      host: host,
+      interval: _pingInterval,
+      notifyOnTimeout: false,
+      notifyOnHighLatency: false,
+      latencyThresholdPercent: 50,
+    );
     _items.add(DashboardItem(type: DashboardItemType.ping, value: id));
     if (save) {
       await AppDatabase.setPingCard(id, {
         'host': host,
         'isPaused': false,
+        'keepAliveInBackground': false,
+        'notifyOnTimeout': false,
+        'notifyOnHighLatency': false,
+        'latencyThresholdPercent': 50,
         'interval': _pingInterval,
       });
       _saveToPrefs();
@@ -320,6 +389,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
     String? host,
     int? interval,
     bool? keepAliveInBackground,
+    bool? notifyOnTimeout,
+    bool? notifyOnHighLatency,
+    int? latencyThresholdPercent,
   }) async {
     final existing = _results[id];
     if (existing != null) {
@@ -330,6 +402,15 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       existing.interval = interval ?? existing.interval;
       if (keepAliveInBackground != null) {
         existing.keepAliveInBackground = keepAliveInBackground;
+      }
+      if (notifyOnTimeout != null) {
+        existing.notifyOnTimeout = notifyOnTimeout;
+      }
+      if (notifyOnHighLatency != null) {
+        existing.notifyOnHighLatency = notifyOnHighLatency;
+      }
+      if (latencyThresholdPercent != null) {
+        existing.latencyThresholdPercent = latencyThresholdPercent;
       }
       if (host != null) {
         existing.host = host;
@@ -344,6 +425,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         'host': existing.host,
         'isPaused': existing.isPaused,
         'keepAliveInBackground': existing.keepAliveInBackground,
+        'notifyOnTimeout': existing.notifyOnTimeout,
+        'notifyOnHighLatency': existing.notifyOnHighLatency,
+        'latencyThresholdPercent': existing.latencyThresholdPercent,
         'interval': existing.interval,
       });
       notifyListeners();
@@ -486,9 +570,27 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
             result.latency = null;
             result.error ??= 'No Response';
 
+            if (result.notifyOnTimeout) {
+              _sendNotification(
+                'Ping Timeout',
+                '${result.name ?? result.host} is unreachable',
+              );
+            }
+
             // Record failure as 0 for heatmap
             result.history.add(0);
           } else {
+            final avg = result.averageLatency;
+            if (result.notifyOnHighLatency && avg > 0) {
+              final threshold =
+                  avg * (1 + result.latencyThresholdPercent / 100);
+              if (result.latency! > threshold) {
+                _sendNotification(
+                  'High Latency Alert',
+                  '${result.name ?? result.host}: ${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
+                );
+              }
+            }
             // Update history with latency
             result.history.add(result.latency!);
           }

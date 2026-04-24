@@ -237,6 +237,9 @@ class PingCard extends StatelessWidget {
     final ctrlName = TextEditingController(text: item.name);
     int selectedInterval = item.interval;
     bool keepAlive = item.keepAliveInBackground;
+    bool notifyTimeout = item.notifyOnTimeout;
+    bool notifyHighLatency = item.notifyOnHighLatency;
+    int threshold = item.latencyThresholdPercent;
 
     showDialog(
       context: context,
@@ -257,12 +260,18 @@ class PingCard extends StatelessWidget {
             if (newName != item.name ||
                 newHost != item.host ||
                 selectedInterval != item.interval ||
-                keepAlive != item.keepAliveInBackground) {
+                keepAlive != item.keepAliveInBackground ||
+                notifyTimeout != item.notifyOnTimeout ||
+                notifyHighLatency != item.notifyOnHighLatency ||
+                threshold != item.latencyThresholdPercent) {
               provider.updatePing(item.id,
                   host: newHost,
                   name: newName,
                   interval: selectedInterval,
-                  keepAliveInBackground: keepAlive);
+                  keepAliveInBackground: keepAlive,
+                  notifyOnTimeout: notifyTimeout,
+                  notifyOnHighLatency: notifyHighLatency,
+                  latencyThresholdPercent: threshold);
             }
             Navigator.pop(context);
           }
@@ -275,72 +284,121 @@ class PingCard extends StatelessWidget {
               'Edit Ping',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: ctrlName,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: 'Optional',
-                    labelText: 'Name',
-                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                    border: UnderlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                TextFormField(
-                  controller: ctrlHost,
-                  style: const TextStyle(fontSize: 14),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Host',
-                    hintText: 'google.com',
-                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                    border: UnderlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Ping Interval:',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    DropdownButton<int>(
-                      value: selectedInterval,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: ctrlName,
+                    autofocus: true,
+                    decoration: const InputDecoration(
                       isDense: true,
-                      underline: const SizedBox(),
-                      items: [1, 2, 5, 10, 30, 60]
-                          .map((v) => DropdownMenuItem(
-                                value: v,
-                                child: Text('${v}s',
-                                    style: const TextStyle(fontSize: 13)),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setState(() => selectedInterval = v);
-                      },
+                      hintText: 'Optional',
+                      labelText: 'Name',
+                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                      border: UnderlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  TextFormField(
+                    controller: ctrlHost,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      labelText: 'Host',
+                      hintText: 'google.com',
+                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                      border: UnderlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Ping Interval:',
+                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      DropdownButton<int>(
+                        value: selectedInterval,
+                        isDense: true,
+                        underline: const SizedBox(),
+                        items: [1, 2, 5, 10, 30, 60]
+                            .map((v) => DropdownMenuItem(
+                                  value: v,
+                                  child: Text('${v}s',
+                                      style: const TextStyle(fontSize: 13)),
+                                ))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v != null) setState(() => selectedInterval = v);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Keep alive in bg:',
+                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      Switch(
+                        value: keepAlive,
+                        onChanged: (v) {
+                          setState(() {
+                            keepAlive = v;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const Text('Notifications',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueAccent)),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Notify on Timeout',
+                        style: TextStyle(fontSize: 13)),
+                    value: notifyTimeout,
+                    onChanged: (v) => setState(() => notifyTimeout = v),
+                  ),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Notify on High Latency',
+                        style: TextStyle(fontSize: 13)),
+                    value: notifyHighLatency,
+                    onChanged: (v) => setState(() => notifyHighLatency = v),
+                  ),
+                  if (notifyHighLatency) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Threshold (% avg):',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        DropdownButton<int>(
+                          value: threshold,
+                          isDense: true,
+                          underline: const SizedBox(),
+                          items: [10, 20, 30, 50, 100, 200]
+                              .map((v) => DropdownMenuItem(
+                                    value: v,
+                                    child: Text('+$v%',
+                                        style: const TextStyle(fontSize: 12)),
+                                  ))
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) setState(() => threshold = v);
+                          },
+                        ),
+                      ],
                     ),
                   ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Keep alive in bg:',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    Switch(
-                      value: keepAlive,
-                      onChanged: (v) {
-                        setState(() {
-                          keepAlive = v;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
             actions: [
               TextButton(
