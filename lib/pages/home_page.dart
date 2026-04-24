@@ -244,35 +244,6 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const Divider(),
                 const Text(
-                  'Ping Settings',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                ListTile(
-                  dense: true,
-                  title: const Text('Ping Interval',
-                      style: TextStyle(fontSize: 13)),
-                  trailing: DropdownButton<int>(
-                    value: ping.pingInterval,
-                    items: [1, 2, 5, 10, 30]
-                        .map((e) => DropdownMenuItem(
-                            value: e,
-                            child: Text('${e}s',
-                                style: const TextStyle(fontSize: 13))))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) ping.setPingInterval(v);
-                    },
-                  ),
-                ),
-                SwitchListTile(
-                  dense: true,
-                  title: const Text('Pause on Background',
-                      style: TextStyle(fontSize: 13)),
-                  value: ping.pauseOnBackground,
-                  onChanged: (v) => ping.setPauseOnBackground(v),
-                ),
-                const Divider(),
-                const Text(
                   'WiFi Settings',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                 ),
