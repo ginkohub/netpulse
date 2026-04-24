@@ -242,28 +242,6 @@ class _HomePageState extends State<HomePage> {
                     speed.setDemoMode(v);
                   },
                 ),
-                const Divider(),
-                const Text(
-                  'WiFi Settings',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                ListTile(
-                  dense: true,
-                  title: const Text('Refresh Interval',
-                      style: TextStyle(fontSize: 13)),
-                  trailing: DropdownButton<int>(
-                    value: wifi.refreshInterval,
-                    items: [5, 10, 30, 60, 300]
-                        .map((e) => DropdownMenuItem(
-                            value: e,
-                            child: Text('${e}s',
-                                style: const TextStyle(fontSize: 13))))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) wifi.setRefreshInterval(v);
-                    },
-                  ),
-                ),
               ],
             ),
           ),
