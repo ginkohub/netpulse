@@ -236,6 +236,7 @@ class PingCard extends StatelessWidget {
     final ctrlHost = TextEditingController(text: item.host);
     final ctrlName = TextEditingController(text: item.name);
     int selectedInterval = item.interval;
+    bool keepAlive = item.keepAliveInBackground;
 
     showDialog(
       context: context,
@@ -255,9 +256,13 @@ class PingCard extends StatelessWidget {
 
             if (newName != item.name ||
                 newHost != item.host ||
-                selectedInterval != item.interval) {
+                selectedInterval != item.interval ||
+                keepAlive != item.keepAliveInBackground) {
               provider.updatePing(item.id,
-                  host: newHost, name: newName, interval: selectedInterval);
+                  host: newHost,
+                  name: newName,
+                  interval: selectedInterval,
+                  keepAliveInBackground: keepAlive);
             }
             Navigator.pop(context);
           }
@@ -315,6 +320,22 @@ class PingCard extends StatelessWidget {
                           .toList(),
                       onChanged: (v) {
                         if (v != null) setState(() => selectedInterval = v);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Keep alive in bg:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    Switch(
+                      value: keepAlive,
+                      onChanged: (v) {
+                        setState(() {
+                          keepAlive = v;
+                        });
                       },
                     ),
                   ],

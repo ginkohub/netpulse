@@ -13,6 +13,7 @@ class PingResultModel {
   bool isOnline;
   String? error;
   bool isPaused;
+  bool keepAliveInBackground;
   int interval;
   DateTime? lastPingTime;
   List<int> history;
@@ -25,6 +26,7 @@ class PingResultModel {
     this.isOnline = false,
     this.error,
     this.isPaused = false,
+    this.keepAliveInBackground = false,
     this.interval = 1,
     this.lastPingTime,
     List<int>? history,
@@ -143,6 +145,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
             name: config?['name'],
             host: host,
             isPaused: config?['isPaused'] ?? false,
+            keepAliveInBackground: config?['keepAliveInBackground'] ?? false,
             interval: config?['interval'] ?? _pingInterval,
             history: [],
           );
@@ -316,6 +319,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
     String? name,
     String? host,
     int? interval,
+    bool? keepAliveInBackground,
   }) async {
     final existing = _results[id];
     if (existing != null) {
@@ -324,6 +328,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       existing.name = name ?? existing.name;
       existing.interval = interval ?? existing.interval;
+      if (keepAliveInBackground != null) {
+        existing.keepAliveInBackground = keepAliveInBackground;
+      }
       if (host != null) {
         existing.host = host;
         if (hostChanged) {
@@ -336,6 +343,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         'name': existing.name,
         'host': existing.host,
         'isPaused': existing.isPaused,
+        'keepAliveInBackground': existing.keepAliveInBackground,
         'interval': existing.interval,
       });
       notifyListeners();
@@ -393,7 +401,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _runNextPingBatch() async {
     while (_isLooping) {
-      if (!_hasNetwork || (_pauseOnBackground && _isBackgrounded)) {
+      if (!_hasNetwork) {
         await Future.delayed(const Duration(seconds: 1));
         continue;
       }
@@ -403,6 +411,12 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
           .where((e) {
             final r = e.value;
             if (r.isPaused) return false;
+
+            // If backgrounded, only allow if global setting is off OR individual keepAlive is on
+            if (_isBackgrounded && _pauseOnBackground && !r.keepAliveInBackground) {
+              return false;
+            }
+
             if (r.lastPingTime == null) return true;
             return now.difference(r.lastPingTime!).inSeconds >= r.interval;
           })
@@ -415,7 +429,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       for (int i = 0; i < idsDue.length; i += 3) {
-        if (!_hasNetwork || (_pauseOnBackground && _isBackgrounded)) break;
+        if (!_hasNetwork) break;
         final batch = idsDue.skip(i).take(3);
         final futures = batch.map((id) => _pingSingleHost(id)).toList();
         await Future.wait(futures);
