@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/ping_service.dart';
 import '../services/wifi_service.dart';
 import '../services/settings_service.dart';
+import '../services/speedtest_service.dart';
 import 'log_page.dart';
 import 'about_page.dart';
 import '../widgets/wifi_info_card.dart';
@@ -211,6 +212,101 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _showAppSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        title: const Text(
+          'App Settings',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
+        content: Consumer3<PingProvider, WifiProvider, SpeedTestProvider>(
+          builder: (context, ping, wifi, speed, child) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('Global Demo Mode',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orangeAccent)),
+                  value: ping.isDemoMode,
+                  onChanged: (v) {
+                    ping.setDemoMode(v);
+                    wifi.setDemoMode(v);
+                    speed.setDemoMode(v);
+                  },
+                ),
+                const Divider(),
+                const Text(
+                  'Ping Settings',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('Ping Interval',
+                      style: TextStyle(fontSize: 13)),
+                  trailing: DropdownButton<int>(
+                    value: ping.pingInterval,
+                    items: [1, 2, 5, 10, 30]
+                        .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text('${e}s',
+                                style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) ping.setPingInterval(v);
+                    },
+                  ),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('Pause on Background',
+                      style: TextStyle(fontSize: 13)),
+                  value: ping.pauseOnBackground,
+                  onChanged: (v) => ping.setPauseOnBackground(v),
+                ),
+                const Divider(),
+                const Text(
+                  'WiFi Settings',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('Refresh Interval',
+                      style: TextStyle(fontSize: 13)),
+                  trailing: DropdownButton<int>(
+                    value: wifi.refreshInterval,
+                    items: [5, 10, 30, 60, 300]
+                        .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text('${e}s',
+                                style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) wifi.setRefreshInterval(v);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _refreshAll() async {
     final wifi = context.read<WifiProvider>();
     await wifi.updateWifiDetails();
@@ -255,11 +351,13 @@ class _HomePageState extends State<HomePage> {
               if (value == 0) {
                 _showBackupRestoreDialog(context);
               } else if (value == 1) {
+                _showAppSettingsDialog(context);
+              } else if (value == 2) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LogPage()),
                 );
-              } else if (value == 2) {
+              } else if (value == 3) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const AboutPage()),
@@ -281,6 +379,16 @@ class _HomePageState extends State<HomePage> {
                 value: 1,
                 child: Row(
                   children: [
+                    Icon(Icons.tune, size: 20),
+                    SizedBox(width: 12),
+                    Text('App Settings'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 2,
+                child: Row(
+                  children: [
                     Icon(Icons.list_alt_outlined, size: 20),
                     SizedBox(width: 12),
                     Text('Internal Logs'),
@@ -288,7 +396,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const PopupMenuItem(
-                value: 2,
+                value: 3,
                 child: Row(
                   children: [
                     Icon(Icons.info_outline, size: 20),
@@ -359,7 +467,10 @@ class _HomePageState extends State<HomePage> {
                       card = const SpeedTestCard();
                       break;
                     case DashboardItemType.ping:
-                      final host = item.value!;
+                      final host = item.value;
+                      if (host == null) {
+                        return SizedBox(key: ValueKey('ping_error_$index'));
+                      }
                       itemKey = 'ping_${host}_$index';
                       final result = provider.getResult(host);
                       if (result == null) {
@@ -388,24 +499,58 @@ class _HomePageState extends State<HomePage> {
                     ),
                     direction: isReorder
                         ? DismissDirection.none
-                        : DismissDirection.endToStart,
+                        : (item.type == DashboardItemType.ping
+                            ? DismissDirection.horizontal
+                            : DismissDirection.endToStart),
+                    confirmDismiss: (direction) async {
+                      if (direction == DismissDirection.startToEnd) {
+                        final val = item.value;
+                        if (item.type == DashboardItemType.ping && val != null) {
+                          provider.toggleHost(val);
+                        }
+                        return false;
+                      }
+                      return true;
+                    },
                     onDismissed: (_) {
-                      if (item.type == DashboardItemType.ping) {
-                        provider.removeHost(item.value!);
+                      final val = item.value;
+                      if (item.type == DashboardItemType.ping && val != null) {
+                        provider.removeHost(val);
                       } else {
                         provider.removeItem(
                           item.type,
-                          value: item.value,
+                          value: val,
                           index: index,
                         );
                       }
                     },
-                    background: Container(
-                      color: Colors.redAccent,
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      child: const Icon(Icons.delete, size: 24),
-                    ),
+                    background: item.type == DashboardItemType.ping && item.value != null
+                        ? Container(
+                            color: Colors.blueAccent,
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 20),
+                            child: Icon(
+                              provider.getResult(item.value!)?.isPaused ?? false
+                                  ? Icons.play_arrow
+                                  : Icons.pause,
+                              size: 24,
+                            ),
+                          )
+                        : Container(
+                            color: Colors.redAccent,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete, size: 24),
+                          ),
+                    secondaryBackground: item.type == DashboardItemType.ping &&
+                            item.value != null
+                        ? Container(
+                            color: Colors.redAccent,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete, size: 24),
+                          )
+                        : null,
                     child: KeyedSubtree(
                       key: ValueKey('${item.type.name}_${item.value ?? index}'),
                       child: ReorderableDragStartListener(

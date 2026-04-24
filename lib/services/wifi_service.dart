@@ -18,7 +18,6 @@ class WifiService {
 
   static void _logError(String method, String? error) {
     final msg = 'WifiService $method: $error';
-    debugPrint(msg);
     _logger?.addLog(msg, level: 'ERROR');
   }
 
@@ -129,6 +128,7 @@ class WifiService {
 
 class WifiProvider extends ChangeNotifier {
   final Connectivity _connectivity = Connectivity();
+  final LogProvider? logger;
 
   int? _signalStrength;
   String _status = 'Disconnected';
@@ -191,7 +191,10 @@ class WifiProvider extends ChangeNotifier {
   bool? get isMetered => _isMetered;
   bool get isDemoMode => _isDemoMode;
 
-  WifiProvider() {
+  WifiProvider({this.logger}) {
+    if (logger != null) {
+      WifiService.setLogger(logger!);
+    }
     _loadConfig();
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
       updateWifiDetails();
@@ -240,13 +243,17 @@ class WifiProvider extends ChangeNotifier {
     final freq = _frequency!;
     _channel = freq > 3000 ? 36 + (random % 5) : 1 + (random % 11);
     _band = freq > 3000 ? '5 GHz' : '2.4 GHz';
-    _security = 'WPA2';
-    _standard = '802.11ac';
-    _txSpeed = 72 + (random % 200);
-    _rxSpeed = 72 + (random % 200);
+    _security = 'WPA2-PSK';
+    _standard = '802.11ax (Wi-Fi 6)';
+    _txSpeed = 1200 + (random % 200);
+    _rxSpeed = 1200 + (random % 200);
     _connectionType = 'WIFI';
+    _connectionStatus = 'Connected';
     _isConnected = true;
     _isMetered = false;
+    _capabilities = ['INTERNET', 'NOT_METERED', 'VALIDATED'];
+    _downstreamBandwidth = 1000000;
+    _upstreamBandwidth = 1000000;
     notifyListeners();
   }
 
@@ -304,8 +311,6 @@ class WifiProvider extends ChangeNotifier {
         _ip = await WifiService.getIpAddress();
         _gateway = await WifiService.getGateway();
         _dns = await WifiService.getDns();
-
-        _dns = "DHCP";
 
         if (_clientMac == null || _clientMac == "02:00:00:00:00:00") {
           _clientMac = "Locked by OS";

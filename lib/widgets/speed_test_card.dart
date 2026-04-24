@@ -486,84 +486,149 @@ class SpeedTestCard extends StatelessWidget {
   }
 
   void _showServerDialog(BuildContext context, SpeedTestProvider st) {
+    st.setSearchQuery('');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
         contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
         actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-        title: const Text(
-          'Select Server',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 250,
-          child: ListView.builder(
-            itemCount: st.availableServers.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  leading: const Icon(Icons.auto_awesome, size: 16),
-                  title: const Text(
-                    'Auto Pick Best',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    '${st.availableServers.length} servers available',
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                  selected: st.selectedServer == null,
-                  onTap: () {
-                    st.selectServer(null);
-                    st.findBestServer();
-                    Navigator.pop(context);
-                  },
-                );
-              }
-              final server = st.availableServers[index - 1];
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                leading: Icon(
-                  server.latency < 50
-                      ? Icons.signal_cellular_4_bar
-                      : (server.latency < 100
-                            ? Icons.signal_cellular_alt
-                            : Icons.signal_cellular_alt_1_bar),
-                  size: 12,
-                  color: server.latency < 50
-                      ? Colors.greenAccent
-                      : (server.latency < 100
-                            ? Colors.orangeAccent
-                            : Colors.redAccent),
-                ),
-                title: Text(
-                  '${server.name} • ${server.latency < 9999 ? '${server.latency}ms' : '?'}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                subtitle: Text(
-                  server.sponsor,
-                  style: const TextStyle(fontSize: 10),
-                ),
-                trailing: st.selectedServer == server
-                    ? const Icon(
-                        Icons.check,
-                        size: 12,
-                        color: Colors.greenAccent,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Select Server',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              onChanged: (v) => st.setSearchQuery(v),
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search city, sponsor or country...',
+                prefixIcon: st.isSearchingRemote
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       )
-                    : null,
-                onTap: () {
-                  st.selectServer(server);
-                  Navigator.pop(context);
-                },
-              );
-            },
+                    : const Icon(Icons.search, size: 18),
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Consumer<SpeedTestProvider>(
+          builder: (context, st, _) => SizedBox(
+            width: double.maxFinite,
+            height: 350,
+            child: st.isRefreshing
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(strokeWidth: 2),
+                        SizedBox(height: 16),
+                        Text(
+                          'Fetching fresh servers...',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      if (st.searchQuery.isEmpty)
+                        ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          leading: const Icon(Icons.auto_awesome, size: 16),
+                          title: const Text(
+                            'Auto Pick Best',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${st.availableServers.length} servers available',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                          selected: st.selectedServer == null,
+                          onTap: () {
+                            st.selectServer(null);
+                            st.findBestServer();
+                            Navigator.pop(context);
+                          },
+                        ),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: st.sortedServers.length,
+                          itemBuilder: (context, index) {
+                            final server = st.sortedServers[index];
+                            return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              leading: Icon(
+                                server.latency < 50
+                                    ? Icons.signal_cellular_4_bar
+                                    : (server.latency < 100
+                                          ? Icons.signal_cellular_alt
+                                          : Icons.signal_cellular_alt_1_bar),
+                                size: 12,
+                                color: server.latency < 50
+                                    ? Colors.greenAccent
+                                    : (server.latency < 100
+                                          ? Colors.orangeAccent
+                                          : Colors.redAccent),
+                              ),
+                              title: Text(
+                                '${server.name} (${server.countryCode})',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                '${server.sponsor} • ${server.distance.round()}km • ${server.latency < 9999 ? '${server.latency}ms' : '?'}',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                              trailing: st.selectedServer == server
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 12,
+                                      color: Colors.greenAccent,
+                                    )
+                                  : null,
+                              onTap: () {
+                                st.selectServer(server);
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              st.clearServerCaches();
+            },
+            icon: const Icon(Icons.refresh, size: 14),
+            label: const Text('REFRESH LIST', style: TextStyle(fontSize: 11)),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('CLOSE', style: TextStyle(fontSize: 13)),

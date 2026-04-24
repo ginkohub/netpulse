@@ -1,19 +1,17 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:netpulse/services/log_service.dart';
+import 'package:provider/provider.dart';
+import 'package:netpulse/services/mikrotik_service.dart';
 import 'package:netpulse/models/mikrotik.dart';
-import 'package:netpulse/utils/parser.dart';
 import 'package:netpulse/utils/formater.dart';
-import 'package:routeros_api/routeros_api.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:netpulse/database/database.dart' show AppDatabase;
+import 'package:netpulse/utils/parser.dart';
 import 'base_card.dart';
 
-class MikrotikCard extends StatefulWidget {
+class MikrotikCard extends StatelessWidget {
   final String? uniqueKey;
   final String? configKey;
   final VoidCallback? onDelete;
+
   const MikrotikCard({
     super.key,
     this.uniqueKey,
@@ -21,174 +19,161 @@ class MikrotikCard extends StatefulWidget {
     this.onDelete,
   });
 
-  @override
-  State<MikrotikCard> createState() => _MikrotikCardState();
-}
-
-class _MikrotikCardState extends State<MikrotikCard> {
-  String _host = '';
-  int _port = 8728;
-  String _user = '';
-  String _pass = '';
-  String _monitoredInterfaces = '';
-  int _refreshInterval = 2;
-  int _activeUsersCount = 0;
-  int _cpuLoad = 0;
-  bool _isMonitoring = false;
-  bool _isConnected = false;
-  bool _isDemoMode = false;
-  bool _isLoading = false;
-  String _status = 'Disconnected';
-  List<MikrotikUser> _activeUsers = [];
-  List<InterfaceStat> _interfaceStats = [];
-  MikrotikSystem? _system;
-  final LogProvider _log = LogProvider();
-
-  RouterOSClient? _client;
-  Timer? _timer;
-  final Connectivity _connectivity = Connectivity();
-  StreamSubscription? _connectivitySub;
-  bool _hasNetwork = true;
-  bool _isFetching = false;
-  bool _usersExpanded = false;
-  final Map<String, int> _prevBytesIn = {};
-  final Map<String, int> _prevBytesOut = {};
-
-  String get _configKey => widget.configKey ?? widget.uniqueKey ?? 'default';
+  String get _configKey => configKey ?? uniqueKey ?? 'default';
 
   @override
-  void initState() {
-    super.initState();
-    _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
-      _hasNetwork =
-          results.isNotEmpty && !results.contains(ConnectivityResult.none);
-      if (_hasNetwork && _isMonitoring && !_isConnected && !_isLoading) {
-        connect();
-      }
-    });
-    _checkConnectivityAndLoad();
-  }
+  Widget build(BuildContext context) {
+    final provider = context.read<MikrotikProvider>();
+    final instance = provider.getInstance(_configKey);
 
-  Future<void> _checkConnectivityAndLoad() async {
-    final result = await _connectivity.checkConnectivity();
-    _hasNetwork =
-        result.isNotEmpty && !result.contains(ConnectivityResult.none);
-    await _loadConfig();
-  }
+    return ListenableBuilder(
+      listenable: instance,
+      builder: (context, _) {
+        final isConnected = instance.isConnected;
+        final config = instance.config;
 
-  Future<void> _loadConfig() async {
-    final card = await AppDatabase.getMikrotikCard(_configKey);
-    setState(() {
-      _host = card?['host'] ?? '';
-      _port = card?['port'] ?? 8728;
-      _user = card?['user'] ?? '';
-      _pass = card?['pass'] ?? '';
-      _monitoredInterfaces = card?['ifaces'] ?? '';
-      _refreshInterval = card?['refresh'] ?? 2;
-      _isMonitoring = card?['monitor'] ?? false;
-      _isDemoMode = card?['demo'] ?? false;
-    });
-    if (_isMonitoring && (_host.isNotEmpty || _isDemoMode)) {
-      if (_isDemoMode) {
-        _startDemoMode();
-      } else {
-        connect();
-      }
-    }
-  }
+        final userStatusColor = switch (instance.activeUsersCount) {
+          int i when i > 100 => Colors.greenAccent,
+          int i when i > 70 => Colors.cyanAccent,
+          int i when i > 50 => Colors.yellowAccent,
+          int i when i > 20 => Colors.orangeAccent,
+          _ => Colors.redAccent,
+        };
+        final cpuLoadColor = switch (instance.cpuLoad) {
+          int i when i > 90 => Colors.redAccent,
+          int i when i > 75 => Colors.orangeAccent,
+          int i when i > 50 => Colors.yellowAccent,
+          int i when i > 25 => Colors.cyanAccent,
+          _ => Colors.greenAccent,
+        };
 
-  Future<void> _saveConfig() async {
-    await AppDatabase.setMikrotikCard(_configKey, {
-      'host': _host,
-      'port': _port,
-      'user': _user,
-      'pass': _pass,
-      'ifaces': _monitoredInterfaces,
-      'refresh': _refreshInterval,
-      'monitor': _isMonitoring,
-      'demo': _isDemoMode,
-    });
-  }
+        Widget card = BaseCard(
+          title: isConnected
+              ? (config.isDemoMode ? 'Demo Mode' : config.host)
+              : 'MikroTik',
+          subtitle: isConnected
+              ? (config.isDemoMode ? 'Demo' : 'Connected')
+              : instance.status,
+          subtitleColor: isConnected ? Colors.greenAccent : Colors.grey,
+          leading: Icon(
+            Icons.router,
+            color: isConnected ? Colors.orangeAccent : Colors.grey,
+            size: 24,
+          ),
+          trailing: isConnected
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildStatusChip(
+                      '${instance.activeUsersCount}',
+                      'users',
+                      userStatusColor,
+                    ),
+                    const SizedBox(width: 2),
+                    _buildStatusChip(
+                      '${instance.cpuLoad}',
+                      'CPU %',
+                      cpuLoadColor,
+                    ),
+                  ],
+                )
+              : null,
+          onDoubleTap: () => _showLoginDialog(context, instance),
+          onTap: () {
+            if (!isConnected && config.host.isNotEmpty) instance.connect();
+          },
+          children: isConnected
+              ? [
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: _MikrotikDetails(instance: instance),
+                  ),
+                ]
+              : null,
+        );
 
-  void _startDemoMode() {
-    setState(() {
-      _isConnected = true;
-      _isDemoMode = true;
-      _status = 'Demo Mode';
-    });
-    _generateDemoData();
-    _timer = Timer.periodic(
-      Duration(seconds: _refreshInterval),
-      (_) => _generateDemoData(),
+        return Dismissible(
+          key: ValueKey('mikrotik_$_configKey'),
+          direction: onDelete != null
+              ? DismissDirection.horizontal
+              : (isConnected
+                    ? DismissDirection.endToStart
+                    : DismissDirection.none),
+          confirmDismiss: (direction) async {
+            if (direction == DismissDirection.startToEnd) {
+              if (isConnected) {
+                instance.disconnect();
+              } else if (config.host.isNotEmpty) {
+                instance.connect();
+              }
+              return false;
+            } else {
+              onDelete?.call();
+              provider.removeInstance(_configKey);
+              return true;
+            }
+          },
+          background: Container(
+            color: Colors.greenAccent.withAlpha(50),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 20),
+            child: const Icon(Icons.link_off, color: Colors.greenAccent),
+          ),
+          secondaryBackground: Container(
+            color: Colors.redAccent.withAlpha(50),
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            child: const Icon(Icons.delete, color: Colors.redAccent),
+          ),
+          child: card,
+        );
+      },
     );
   }
 
-  void _generateDemoData() {
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final userCount = 5 + (random % 50);
-    final interfaces = _monitoredInterfaces
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final seen = <String>{};
-    final ifStats = interfaces.where((name) => seen.add(name)).map((name) {
-      final rx = (random % 100000000) + 1000000;
-      final tx = (random % 50000000) + 500000;
-      return InterfaceStat(
-        name: name,
-        rxRate: formatSpeed(rx),
-        txRate: formatSpeed(tx),
-        enabled: true,
-      );
-    }).toList();
-    final users = List.generate(userCount.clamp(0, 20), (i) {
-      final idx = (random + i * 7) % 100;
-      return MikrotikUser(
-        id: 'demo_$i',
-        name: 'user$i',
-        address: '192.168.1.${10 + idx}',
-        uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
-        bytesIn: formatBytes(random * 1000),
-        bytesOut: formatBytes(random * 500),
-        rxRate: formatSpeed(random % 10000),
-        txRate: formatSpeed(random % 5000),
-      );
-    });
-    setState(() {
-      _activeUsersCount = userCount;
-      _interfaceStats = ifStats;
-      _activeUsers = users;
-      _system = MikrotikSystem(
-        name: 'Demo-MikroTik',
-        uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
-        version: '7.15.5',
-        buildTime: '2024-01-15',
-        factorySoftware: '7.14.1',
-        boardName: 'RB760iGS',
-        architectureName: 'arm',
-        cpu: 'ARMv7',
-        cpuCount: 4,
-        cpuLoad: random % 100,
-        freeHdd: (random % 100) * 1024 * 1024,
-        totalHdd: 256 * 1024 * 1024,
-        freeRam: (random % 200) * 1024 * 1024,
-        totalRam: 512 * 1024 * 1024,
-        interfaces: {"ISP1": true, "ISP2": false},
-      );
-      _cpuLoad = random % 100;
-      _status = 'Active: $userCount users';
-    });
+  Widget _buildStatusChip(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(40)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              height: 1.1,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              color: color.withAlpha(150),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _showLoginDialog() {
-    final hostCtrl = TextEditingController(text: _host);
-    final portCtrl = TextEditingController(text: _port.toString());
-    final userCtrl = TextEditingController(text: _user);
-    final passCtrl = TextEditingController(text: _pass);
-    final ifaceCtrl = TextEditingController(text: _monitoredInterfaces);
-    int currentInterval = _refreshInterval;
-    bool demoMode = _isDemoMode;
+  void _showLoginDialog(BuildContext context, MikrotikInstance instance) {
+    final config = instance.config;
+    final hostCtrl = TextEditingController(text: config.host);
+    final portCtrl = TextEditingController(text: config.port.toString());
+    final userCtrl = TextEditingController(text: config.user);
+    final passCtrl = TextEditingController(text: config.pass);
+    final ifaceCtrl = TextEditingController(text: config.monitoredInterfaces);
+    int currentInterval = config.refreshInterval;
+    bool demoMode = config.isDemoMode;
 
     showDialog(
       context: context,
@@ -285,34 +270,22 @@ class _MikrotikCardState extends State<MikrotikCard> {
             ),
             TextButton(
               onPressed: () {
-                final wasDemo = _isDemoMode;
-                setState(() {
-                  _host = hostCtrl.text.trim();
-                  _port = parseIntSafe(
-                    portCtrl.text.trim(),
-                    defaultValue: 8728,
-                  );
-                  _user = userCtrl.text.trim();
-                  _pass = passCtrl.text.trim();
-                  _monitoredInterfaces = ifaceCtrl.text.trim();
-                  _refreshInterval = currentInterval;
-                  _isMonitoring = true;
-                  _isDemoMode = demoMode;
-                  if (!demoMode) {
-                    _usersExpanded = false;
-                    _activeUsers = [];
-                    _interfaceStats = [];
-                  }
-                });
-                _saveConfig();
+                final newConfig = MikrotikConfig(
+                  host: hostCtrl.text.trim(),
+                  port: parseIntSafe(portCtrl.text.trim(), defaultValue: 8728),
+                  user: userCtrl.text.trim(),
+                  pass: passCtrl.text.trim(),
+                  monitoredInterfaces: ifaceCtrl.text.trim(),
+                  refreshInterval: currentInterval,
+                  isMonitoring: true,
+                  isDemoMode: demoMode,
+                );
+                instance.saveConfig(newConfig);
                 Navigator.pop(context);
-                if (_isDemoMode) {
-                  _startDemoMode();
+                if (demoMode) {
+                  instance.startDemoMode();
                 } else {
-                  if (wasDemo) {
-                    _timer?.cancel();
-                  }
-                  connect();
+                  instance.connect();
                 }
               },
               child: Text(
@@ -328,289 +301,116 @@ class _MikrotikCardState extends State<MikrotikCard> {
       ),
     );
   }
+}
 
-  Future<void> connect() async {
-    if (_host.isEmpty || !_hasNetwork || _isLoading) return;
-    setState(() {
-      _isLoading = true;
-      _status = 'Connecting...';
-    });
+class _MikrotikDetails extends StatefulWidget {
+  final MikrotikInstance instance;
+  const _MikrotikDetails({required this.instance});
 
-    try {
-      _client?.close();
-      await Future.delayed(const Duration(milliseconds: 200));
-      _client = RouterOSClient(
-        host: _host,
-        port: _port,
-        user: _user,
-        password: _pass,
-      );
-      await _client!.connect();
-      setState(() {
-        _isConnected = true;
-        _status = 'Connected';
-      });
-      _loadSystemInfo();
-      _startPolling();
-      _saveConfig();
-    } catch (e) {
-      _log.addLog('Mikrotik($_host): ${e.toString()}', level: 'ERROR');
-      setState(() {
-        _isConnected = false;
-        _status = 'Auth Failed';
-      });
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
+  @override
+  State<_MikrotikDetails> createState() => _MikrotikDetailsState();
+}
 
-  void _startPolling() {
-    _timer?.cancel();
-    if (!_isMonitoring) return;
-    _timer = Timer.periodic(
-      Duration(seconds: _refreshInterval),
-      (_) => _fetchUpdates(),
-    );
-    if (_isConnected) {
-      _fetchUpdates();
-      _loadUsers();
-    }
-  }
+class _MikrotikDetailsState extends State<_MikrotikDetails> {
+  bool _usersExpanded = false;
 
-  Future<void> _loadUsers() async {
-    if (!_isConnected || _client == null || _activeUsers.isNotEmpty) return;
-    try {
-      final hsActive = await _client!.talk(['/ip/hotspot/active/print']);
-      final users = <MikrotikUser>[];
-      for (var item in hsActive) {
-        final u = _mapToUser(item, 'Hotspot');
-        if (u != null) users.add(u);
-      }
-      if (mounted) setState(() => _activeUsers = users);
-    } catch (e) {
-      _log.addLog('Mikrotik($_host): ${e.toString()}', level: 'ERROR');
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    final instance = widget.instance;
+    final config = instance.config;
+    final system = instance.system;
 
-  Future<void> _loadSystemInfo() async {
-    if (!_isConnected || _client == null) return;
-    try {
-      final identity = await _client!.talk(['/system/identity/print']);
-      final resource = await _client!.talk(['/system/resource/print']);
-
-      final ifaces = await _client!.talk(['/interface/print']);
-      final Map<String, bool> interfaces = {};
-      for (var item in ifaces) {
-        if (item['name'] != null) {
-          interfaces[item['name']!] =
-              item['running'] == 'true' && item['disabled'] == 'false';
-        }
-      }
-
-      if (identity.isNotEmpty && resource.isNotEmpty) {
-        final id = identity.first;
-        final res = resource.first;
-        setState(() {
-          _system = MikrotikSystem(
-            name: id['name'] ?? '-',
-            uptime: res['uptime'] ?? '-',
-            version: res['version'] ?? '-',
-            buildTime: res['build-time'] ?? '-',
-            factorySoftware: res['factory-software'] ?? '-',
-            boardName: res['board-name'] ?? '-',
-            architectureName: res['architecture-name'] ?? '-',
-            cpu: res['cpu'] ?? '-',
-            cpuCount: parseIntSafe(res['cpu-count']),
-            cpuLoad: parseIntSafe(res['cpu-load']),
-            freeHdd: parseIntSafe(res['free-hdd-space']),
-            totalHdd: parseIntSafe(res['total-hdd-space']),
-            freeRam: parseIntSafe(res['free-memory']),
-            totalRam: parseIntSafe(res['total-memory']),
-            interfaces: interfaces,
-          );
-        });
-      }
-    } catch (e) {
-      _log.addLog('Mikrotik($_host): ${e.toString()}', level: 'ERROR');
-    }
-  }
-
-  Future<void> _fetchUpdates() async {
-    if (!_isConnected || _client == null || _isFetching) return;
-    _isFetching = true;
-    try {
-      final countResult = await _client!.talk([
-        '/ip/hotspot/active/print',
-        '=count-only=',
-      ]);
-      final hsActiveCount = parseCountOnly(countResult.first['ret']);
-
-      final resources = await _client!.execute(
-        '/system/resource/print',
-        proplist: ['cpu-load', 'free-memory'],
-      );
-      final cpuLoad = parseIntSafe(resources.first['cpu-load']);
-      final freeRAM = parseIntSafe(resources.first['free-memory']);
-
-      List<InterfaceStat> ifStats = [];
-      Map<String, bool> interfaces = {};
-      if (_system != null) {
-        interfaces = _system!.interfaces;
-      }
-
-      if (interfaces.isNotEmpty) {
-        try {
-          for (final item in interfaces.entries) {
-            final iface = item.key;
-            if (!item.value) {
-              ifStats.add(
-                InterfaceStat(
-                  name: iface,
-                  rxRate: '-',
-                  txRate: '-',
-                  enabled: false,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildGrid([
+          _buildDetailItem(
+            'HOST',
+            config.host.isNotEmpty ? config.host : '-',
+            Icons.lan,
+          ),
+          _buildDetailItem(
+            'PORT',
+            config.port.toString(),
+            Icons.settings_input_antenna,
+          ),
+          _buildDetailItem(
+            'USER',
+            config.user.isNotEmpty ? config.user : '-',
+            Icons.person,
+          ),
+          _buildDetailItem(
+            'REFRESH',
+            '${config.refreshInterval}s',
+            Icons.timer,
+          ),
+        ]),
+        if (system != null) ...[
+          const SizedBox(height: 12),
+          const _SectionHeader(title: 'SYSTEM'),
+          const SizedBox(height: 4),
+          _buildGrid([
+            _buildDetailItem('NAME', system.name, Icons.label),
+            _buildDetailItem('UPTIME', system.uptime, Icons.timelapse),
+            _buildDetailItem('VERSION', system.version, Icons.info),
+            _buildDetailItem('BUILD', system.buildTime, Icons.build),
+            _buildDetailItem('FACTORY', system.factorySoftware, Icons.factory),
+            _buildDetailItem('BOARD', system.boardName, Icons.memory),
+            _buildDetailItem(
+              'ARCH',
+              system.architectureName,
+              Icons.architecture,
+            ),
+            _buildDetailItem('CPU', system.cpu, Icons.developer_board),
+            _buildDetailItem('CPUs', '${system.cpuCount}', Icons.numbers),
+            _buildDetailItem('LOAD', '${system.cpuLoad}%', Icons.speed),
+            _buildDetailItem(
+              'RAM',
+              '${formatBytes(system.freeRam)}/${formatBytes(system.totalRam)}',
+              Icons.memory,
+            ),
+            _buildDetailItem(
+              'HDD',
+              '${formatBytes(system.freeHdd)}/${formatBytes(system.totalHdd)}',
+              Icons.storage,
+            ),
+          ]),
+        ],
+        if (instance.interfaceStats.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const _SectionHeader(title: 'INTERFACES'),
+          const SizedBox(height: 4),
+          _buildInterfacesGrid(instance.interfaceStats),
+        ],
+        if (instance.activeUsers.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () => setState(() => _usersExpanded = !_usersExpanded),
+            child: Row(
+              children: [
+                _SectionHeader(
+                  title: 'HOTSPOT USERS (${instance.activeUsers.length})',
                 ),
-              );
-            } else {
-              try {
-                final tr = await _client!.talk([
-                  '/interface/monitor-traffic',
-                  '=interface=$iface',
-                  '=once=',
-                ]);
-                if (tr.isNotEmpty) {
-                  final item = tr.first;
-                  ifStats.add(
-                    InterfaceStat(
-                      name: item['name'] ?? iface,
-                      rxRate: formatSpeed(
-                        parseIntSafe(item['rx-bits-per-second']),
-                      ),
-                      txRate: formatSpeed(
-                        parseIntSafe(item['tx-bits-per-second']),
-                      ),
-                      enabled: true,
-                    ),
-                  );
-                }
-              } catch (e) {
-                _log.addLog(
-                  'Mikrotik($_host):interface $iface: ${e.toString()}',
-                  level: 'ERROR',
-                );
-              }
-            }
-          }
-        } catch (e) {
-          _log.addLog(
-            'Mikrotik($_host):interface: ${e.toString()}',
-            level: 'ERROR',
-          );
-        }
-      }
-
-      setState(() {
-        _activeUsersCount = hsActiveCount;
-        _cpuLoad = cpuLoad;
-        _interfaceStats = ifStats;
-        _status = 'Active: $hsActiveCount users';
-
-        if (_system != null) {
-          _system!.cpuLoad = cpuLoad;
-          _system!.freeRam = freeRAM;
-        }
-      });
-    } catch (e) {
-      _log.addLog(
-        'Mikrotik($_host):_fetchUpdates: ${e.toString()}',
-        level: 'ERROR',
-      );
-      setState(() {
-        _status = 'Disconnected';
-      });
-      _client = null;
-    }
-    _isFetching = false;
-  }
-
-  MikrotikUser? _mapToUser(Map<String, String> item, String type) {
-    final user = item['user'];
-    if (user == null || user.isEmpty) return null;
-    final addr = item['address'] ?? '-';
-    final id = item['.id'] ?? user;
-    final bIn = int.tryParse(item['bytes-in'] ?? '0') ?? 0;
-    final bOut = int.tryParse(item['bytes-out'] ?? '0') ?? 0;
-
-    String rx = '0 b', tx = '0 b';
-    if (_prevBytesIn.containsKey(id)) {
-      rx = formatSpeed(
-        parseIntSafe((bIn - _prevBytesIn[id]!) * 8 / _refreshInterval),
-      );
-      tx = formatSpeed(
-        parseIntSafe((bOut - _prevBytesOut[id]!) * 8 / _refreshInterval),
-      );
-    }
-    _prevBytesIn[id] = bIn;
-    _prevBytesOut[id] = bOut;
-
-    return MikrotikUser(
-      id: id,
-      name: item['user'] ?? 'Unknown',
-      address: addr,
-      uptime: item['uptime'] ?? '',
-      bytesIn: formatBytes(parseIntSafe(bIn.toString())),
-      bytesOut: formatBytes(parseIntSafe(bOut.toString())),
-      rxRate: rx,
-      txRate: tx,
-    );
-  }
-
-  Widget _buildDetailGrid() {
-    return Wrap(
-      spacing: 20,
-      runSpacing: 10,
-      children: [
-        _buildDetailItem('HOST', _host.isNotEmpty ? _host : '-', Icons.lan),
-        _buildDetailItem(
-          'PORT',
-          _port.toString(),
-          Icons.settings_input_antenna,
-        ),
-        _buildDetailItem('USER', _user.isNotEmpty ? _user : '-', Icons.person),
-        _buildDetailItem('REFRESH', '${_refreshInterval}s', Icons.timer),
+                const SizedBox(width: 4),
+                Icon(
+                  _usersExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 14,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
+          ),
+          if (_usersExpanded) ...[
+            const SizedBox(height: 4),
+            _buildUsersTable(instance.activeUsers),
+          ],
+        ],
       ],
     );
   }
 
-  Widget _buildSystemGrid() {
-    if (_system == null) return const SizedBox.shrink();
-    final sys = _system!;
-    return Wrap(
-      spacing: 20,
-      runSpacing: 10,
-      children: [
-        _buildDetailItem('NAME', sys.name, Icons.label),
-        _buildDetailItem('UPTIME', sys.uptime, Icons.timelapse),
-        _buildDetailItem('VERSION', sys.version, Icons.info),
-        _buildDetailItem('BUILD', sys.buildTime, Icons.build),
-        _buildDetailItem('FACTORY', sys.factorySoftware, Icons.factory),
-        _buildDetailItem('BOARD', sys.boardName, Icons.memory),
-        _buildDetailItem('ARCH', sys.architectureName, Icons.architecture),
-        _buildDetailItem('CPU', sys.cpu, Icons.developer_board),
-        _buildDetailItem('CPUs', '${sys.cpuCount}', Icons.numbers),
-        _buildDetailItem('LOAD', '${sys.cpuLoad}%', Icons.speed),
-        _buildDetailItem(
-          'RAM',
-          '${formatBytes(sys.freeRam)}/${formatBytes(sys.totalRam)}',
-          Icons.memory,
-        ),
-        _buildDetailItem(
-          'HDD',
-          '${formatBytes(sys.freeHdd)}/${formatBytes(sys.totalHdd)}',
-          Icons.storage,
-        ),
-      ],
-    );
+  Widget _buildGrid(List<Widget> children) {
+    return Wrap(spacing: 20, runSpacing: 10, children: children);
   }
 
   Widget _buildDetailItem(String label, String value, IconData icon) {
@@ -650,397 +450,151 @@ class _MikrotikCardState extends State<MikrotikCard> {
     );
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _client?.close();
-    _connectivitySub?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final userStatusColor = switch (_activeUsersCount) {
-      int i when i > 100 => Colors.greenAccent,
-      int i when i > 70 => Colors.cyanAccent,
-      int i when i > 50 => Colors.yellowAccent,
-      int i when i > 20 => Colors.orangeAccent,
-      _ => Colors.redAccent,
-    };
-    final cpuLoadColor = switch (_cpuLoad) {
-      int i when i > 90 => Colors.redAccent,
-      int i when i > 75 => Colors.orangeAccent,
-      int i when i > 50 => Colors.yellowAccent,
-      int i when i > 25 => Colors.cyanAccent,
-      _ => Colors.greenAccent,
-    };
-
-    Widget card = BaseCard(
-      title: _isConnected ? (_isDemoMode ? 'Demo Mode' : _host) : 'MikroTik',
-      subtitle: _isConnected ? (_isDemoMode ? 'Demo' : 'Connected') : _status,
-      subtitleColor: _isConnected ? Colors.greenAccent : Colors.grey,
-      leading: Icon(
-        Icons.router,
-        color: _isConnected ? Colors.orangeAccent : Colors.grey,
-        size: 24,
-      ),
-      trailing: _isConnected
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                /* User active count */
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+  Widget _buildInterfacesGrid(List<InterfaceStat> stats) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: stats
+          .map(
+            (s) => SizedBox(
+              width: 130,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.lan,
+                    size: 14,
+                    color: Colors.orangeAccent.withAlpha(150),
                   ),
-                  decoration: BoxDecoration(
-                    color: userStatusColor.withAlpha(25),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: userStatusColor.withAlpha(40)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$_activeUsersCount',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          height: 1.1,
-                        ),
-                      ),
-                      Text(
-                        'users',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: userStatusColor.withAlpha(150),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                /* CPU Load */
-                SizedBox(width: 2),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cpuLoadColor.withAlpha(25),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: cpuLoadColor.withAlpha(40)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$_cpuLoad',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              height: 1.1,
-                            ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.enabled
+                              ? s.name.toUpperCase()
+                              : '${s.name.toUpperCase()} (inactive)',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
                           ),
-                          Text(
-                            '%',
-                            style: TextStyle(fontSize: 9, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        'CPU',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: cpuLoadColor.withAlpha(150),
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            )
-          : null,
-      onDoubleTap: _showLoginDialog,
-      onTap: () {
-        if (!_isConnected && _host.isNotEmpty) connect();
-      },
-      children: _isConnected
-          ? [
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildDetailGrid(),
-                    if (_system != null) ...[
-                      const SizedBox(height: 12),
-                      const Text(
-                        'SYSTEM',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      _buildSystemGrid(),
-                    ],
-
-                    if (_interfaceStats.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const Text(
-                        'INTERFACES',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: _interfaceStats
-                            .map(
-                              (s) => SizedBox(
-                                width: 130,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.lan,
-                                      size: 14,
-                                      color: Colors.orangeAccent.withAlpha(150),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            s.enabled
-                                                ? s.name.toUpperCase()
-                                                : '${s.name.toUpperCase()} (inactive)',
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.grey,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.arrow_downward_rounded,
-                                                size: 10,
-                                                color: Colors.greenAccent,
-                                              ),
-                                              SizedBox(width: 2),
-                                              Text(
-                                                s.rxRate,
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontFamily: 'monospace',
-                                                ),
-                                              ),
-                                              SizedBox(width: 4),
-                                              Icon(
-                                                Icons.arrow_upward_rounded,
-                                                size: 10,
-                                                color: Colors.blueAccent,
-                                              ),
-                                              SizedBox(width: 2),
-                                              Text(
-                                                s.txRate,
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontFamily: 'monospace',
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ],
-                    if (_activeUsers.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      InkWell(
-                        onTap: () =>
-                            setState(() => _usersExpanded = !_usersExpanded),
-                        child: Row(
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
+                            const Icon(
+                              Icons.arrow_downward_rounded,
+                              size: 10,
+                              color: Colors.greenAccent,
+                            ),
+                            const SizedBox(width: 2),
                             Text(
-                              'HOTSPOT USERS (${_activeUsers.length})',
+                              s.rxRate,
                               style: const TextStyle(
-                                fontSize: 9,
+                                fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.grey,
+                                fontFamily: 'monospace',
                               ),
                             ),
                             const SizedBox(width: 4),
-                            Icon(
-                              _usersExpanded
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                              size: 14,
-                              color: Colors.grey,
+                            const Icon(
+                              Icons.arrow_upward_rounded,
+                              size: 10,
+                              color: Colors.blueAccent,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              s.txRate,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      if (_usersExpanded) ...[
-                        const SizedBox(height: 4),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            columnSpacing: 16,
-                            headingRowHeight: 32,
-                            dataRowMinHeight: 32,
-                            dataRowMaxHeight: 36,
-                            columns: const [
-                              DataColumn(
-                                label: Text(
-                                  'Name',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  'IP',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  'RX',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  'TX',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                              ),
-                            ],
-                            rows: _activeUsers
-                                .take(20)
-                                .map(
-                                  (u) => DataRow(
-                                    cells: [
-                                      DataCell(
-                                        Text(
-                                          u.name,
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          u.address,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontFamily: 'monospace',
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          u.rxRate,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.greenAccent,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          u.txRate,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.blueAccent,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
                       ],
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
-            ]
-          : null,
+            ),
+          )
+          .toList(),
     );
+  }
 
-    return Dismissible(
-      key: ValueKey('mikrotik_$_configKey'),
-      direction: widget.onDelete != null
-          ? DismissDirection.horizontal
-          : (_isConnected
-                ? DismissDirection.endToStart
-                : DismissDirection.none),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          if (_isConnected) {
-            setState(() {
-              _isConnected = false;
-              _isDemoMode = false;
-              _activeUsers = [];
-              _interfaceStats = [];
-              _status = 'Disconnected';
-            });
-            _timer?.cancel();
-            _client?.close();
-            _client = null;
-            await _saveConfig();
-          } else if (_host.isNotEmpty) {
-            connect();
-          }
-          return false;
-        } else {
-          widget.onDelete?.call();
-          return true;
-        }
-      },
-      background: Container(
-        color: Colors.greenAccent.withAlpha(50),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 20),
-        child: const Icon(Icons.link_off, color: Colors.greenAccent),
+  Widget _buildUsersTable(List<MikrotikUser> users) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columnSpacing: 16,
+        headingRowHeight: 32,
+        dataRowMinHeight: 32,
+        dataRowMaxHeight: 36,
+        columns: const [
+          DataColumn(label: Text('Name', style: TextStyle(fontSize: 11))),
+          DataColumn(label: Text('IP', style: TextStyle(fontSize: 11))),
+          DataColumn(label: Text('RX', style: TextStyle(fontSize: 11))),
+          DataColumn(label: Text('TX', style: TextStyle(fontSize: 11))),
+        ],
+        rows: users
+            .take(20)
+            .map(
+              (u) => DataRow(
+                cells: [
+                  DataCell(Text(u.name, style: const TextStyle(fontSize: 11))),
+                  DataCell(
+                    Text(
+                      u.address,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      u.rxRate,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.greenAccent,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      u.txRate,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.blueAccent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+            .toList(),
       ),
-      secondaryBackground: Container(
-        color: Colors.redAccent.withAlpha(50),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: Colors.redAccent),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey,
       ),
-      child: card,
     );
   }
 }

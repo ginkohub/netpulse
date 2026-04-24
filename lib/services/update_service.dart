@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'log_service.dart';
 
 class UpdateProvider extends ChangeNotifier {
+  final LogProvider? logger;
   String _currentVersion = '';
   String _latestVersion = '';
   String _downloadUrl = '';
@@ -18,7 +20,7 @@ class UpdateProvider extends ChangeNotifier {
   bool get hasUpdate => _hasUpdate;
   String? get error => _error;
 
-  UpdateProvider() {
+  UpdateProvider({this.logger}) {
     _init();
   }
 
@@ -52,7 +54,7 @@ class UpdateProvider extends ChangeNotifier {
         _hasUpdate = _isNewerVersion(_currentVersion, _latestVersion);
       } else {
         _error = 'Failed to fetch version (HTTP ${response.statusCode})';
-        debugPrint('Update Check Failed: ${response.body}');
+        logger?.addLog('Update Check Failed: ${response.body}', level: 'ERROR');
       }
     } catch (e) {
       _error = 'Connection error: $e';

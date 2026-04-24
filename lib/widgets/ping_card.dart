@@ -235,75 +235,107 @@ class PingCard extends StatelessWidget {
   void _showEditDialog(BuildContext context, PingProvider provider) {
     final ctrlHost = TextEditingController(text: item.host);
     final ctrlName = TextEditingController(text: item.name);
-
-    void onSave() {
-      final newName = ctrlName.text.trim();
-      final newHost = ctrlHost.text.trim().toLowerCase();
-
-      if (newHost.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Host cannot be empty')),
-        );
-        return;
-      }
-
-      if (newName != item.name || newHost != item.host) {
-        provider.updatePing(item.id, host: newHost, name: newName);
-      }
-      Navigator.pop(context);
-    }
+    int selectedInterval = item.interval;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-        actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-        title: const Text(
-          'Edit Ping',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: ctrlName,
-              autofocus: true,
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Optional',
-                labelText: 'Name',
-                hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                border: UnderlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          void onSave() {
+            final newName = ctrlName.text.trim();
+            final newHost = ctrlHost.text.trim().toLowerCase();
+
+            if (newHost.isEmpty) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(
+                  const SnackBar(content: Text('Host cannot be empty')));
+              return;
+            }
+
+            if (newName != item.name ||
+                newHost != item.host ||
+                selectedInterval != item.interval) {
+              provider.updatePing(item.id,
+                  host: newHost, name: newName, interval: selectedInterval);
+            }
+            Navigator.pop(context);
+          }
+
+          return AlertDialog(
+            titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            title: const Text(
+              'Edit Ping',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: ctrlName,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'Optional',
+                    labelText: 'Name',
+                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                    border: UnderlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextFormField(
+                  controller: ctrlHost,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Host',
+                    hintText: 'google.com',
+                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                    border: UnderlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Ping Interval:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    DropdownButton<int>(
+                      value: selectedInterval,
+                      isDense: true,
+                      underline: const SizedBox(),
+                      items: [1, 2, 5, 10, 30, 60]
+                          .map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text('${v}s',
+                                    style: const TextStyle(fontSize: 13)),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setState(() => selectedInterval = v);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
               ),
-            ),
-            SizedBox(height: 4),
-            TextFormField(
-              controller: ctrlHost,
-              style: const TextStyle(fontSize: 14),
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: 'Host',
-                hintText: 'google.com',
-                hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                border: UnderlineInputBorder(),
+              TextButton(
+                onPressed: onSave,
+                child: const Text(
+                  'SAVE',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
-          ),
-          TextButton(
-            onPressed: onSave,
-            child: const Text(
-              'SAVE',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }

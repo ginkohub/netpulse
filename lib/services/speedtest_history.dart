@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../database/database.dart';
+import 'log_service.dart';
 
 class TestHistoryItem {
   final String? id;
@@ -31,12 +32,13 @@ class TestHistoryItem {
 }
 
 class HistoryProvider extends ChangeNotifier {
+  final LogProvider? logger;
   List<TestHistoryItem> _items = [];
   static const int _maxItems = 100;
 
   List<TestHistoryItem> get items => _items;
 
-  HistoryProvider() {
+  HistoryProvider({this.logger}) {
     _loadHistory();
   }
 
@@ -85,7 +87,7 @@ class HistoryProvider extends ChangeNotifier {
       lat = pos.latitude;
       lon = pos.longitude;
     } catch (_) {
-      debugPrint('Location fetching failed for history geotag');
+      logger?.addLog('Location fetching failed for history geotag', level: 'WARN');
     }
 
     final now = DateTime.now();

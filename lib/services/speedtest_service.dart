@@ -11,12 +11,18 @@ class SpeedTestServer {
   final String url;
   final String name;
   final String sponsor;
+  final String country;
+  final String countryCode;
+  final double distance;
   int latency;
 
   SpeedTestServer({
     required this.url,
     required this.name,
     required this.sponsor,
+    this.country = '',
+    this.countryCode = '',
+    this.distance = 0,
     this.latency = 9999,
   });
 
@@ -24,6 +30,9 @@ class SpeedTestServer {
     url: url,
     name: name,
     sponsor: sponsor,
+    country: country,
+    countryCode: countryCode,
+    distance: distance,
     latency: latency ?? this.latency,
   );
 
@@ -31,6 +40,9 @@ class SpeedTestServer {
     'url': url,
     'name': name,
     'sponsor': sponsor,
+    'country': country,
+    'countryCode': countryCode,
+    'distance': distance,
     'latency': latency,
   };
 }
@@ -41,6 +53,7 @@ class SpeedTestProvider extends ChangeNotifier {
 
   bool _isTesting = false;
   bool _isRefreshing = false;
+  bool _isDemoMode = false;
   double _downloadSpeed = 0;
   double _uploadSpeed = 0;
   int _latency = 0;
@@ -50,6 +63,9 @@ class SpeedTestProvider extends ChangeNotifier {
   String _serverName = 'Select Server';
   String _serverSponsor = '-';
   String _baseUrl = '';
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+  bool _isSearchingRemote = false;
 
   List<SpeedTestServer> _availableServers = [];
   SpeedTestServer? _selectedServer;
@@ -64,6 +80,8 @@ class SpeedTestProvider extends ChangeNotifier {
 
   bool get isTesting => _isTesting;
   bool get isRefreshing => _isRefreshing;
+  bool get isSearchingRemote => _isSearchingRemote;
+  bool get isDemoMode => _isDemoMode;
   double get downloadSpeed => _downloadSpeed;
   double get uploadSpeed => _uploadSpeed;
   int get latency => _latency;
@@ -74,7 +92,19 @@ class SpeedTestProvider extends ChangeNotifier {
   String get clientIsp => _clientIsp;
   String get clientIp => _clientIp;
   String get baseUrl => _baseUrl;
+  String get searchQuery => _searchQuery;
   List<SpeedTestServer> get availableServers => _availableServers;
+  List<SpeedTestServer> get sortedServers {
+    final list = _availableServers.where((s) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery.toLowerCase();
+      return s.name.toLowerCase().contains(q) ||
+          s.sponsor.toLowerCase().contains(q) ||
+          s.country.toLowerCase().contains(q);
+    }).toList();
+    list.sort((a, b) => a.latency.compareTo(b.latency));
+    return list;
+  }
   SpeedTestServer? get selectedServer => _selectedServer;
 
   SpeedTestProvider({this.logger}) {
@@ -93,13 +123,23 @@ class SpeedTestProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     await _loadConfig();
-    fetchClientInfo();
-    if (_availableServers.isEmpty) {
-      findBestServer();
+    if (_isDemoMode) {
+      _clientIp = '123.123.123.123';
+      _clientIsp = 'Demo ISP Communications';
+      _serverName = 'Demo Server';
+      _serverSponsor = 'NetPulse Mock';
+      _status = 'Ready (Demo)';
+      notifyListeners();
+    } else {
+      fetchClientInfo();
+      if (_availableServers.isEmpty) {
+        findBestServer();
+      }
     }
   }
 
   Future<void> _loadConfig() async {
+    _isDemoMode = await AppDatabase.getSpeedtestSetting<bool>('demo') ?? false;
     final server = await AppDatabase.getSpeedtestSetting<Map<String, dynamic>>(
       'server',
     );
@@ -133,9 +173,20 @@ class SpeedTestProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setDemoMode(bool enabled) async {
+    _isDemoMode = enabled;
+    await AppDatabase.setSpeedtestSetting('demo', enabled);
+    await _init();
+    notifyListeners();
+  }
+
   Future<void> _saveServers() async {
     final list = _availableServers.map((s) => s.toMap()).toList();
     await AppDatabase.setSpeedtestSetting('server_caches', list);
+  }
+
+  Future<void> clearServerCaches() async {
+    await findBestServer(replace: true);
   }
 
   Future<void> fetchClientInfo() async {
@@ -164,7 +215,7 @@ class SpeedTestProvider extends ChangeNotifier {
       _baseUrl = server.url;
       _serverName = server.name;
       _serverSponsor = server.sponsor;
-      _log('Manual server selection: $_serverName');
+      _log('Manual server selection: $_serverName (${server.country})');
     } else {
       _log('Server selection set to Auto');
     }
@@ -176,12 +227,85 @@ class SpeedTestProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> findBestServer() async {
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+
+    if (query.length > 2 && !_isDemoMode) {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+        fetchServersByQuery(query);
+      });
+    }
+  }
+
+  Future<void> fetchServersByQuery(String query) async {
+    if (_isSearchingRemote || query.isEmpty) return;
+    _isSearchingRemote = true;
+    notifyListeners();
+
+    try {
+      final url =
+          'https://www.speedtest.net/api/js/servers?search=${Uri.encodeComponent(query)}';
+      final res =
+          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+
+      if (res.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(res.body);
+        List<SpeedTestServer> newServers = [];
+
+        for (var s in data) {
+          final server = SpeedTestServer(
+            url: s['url'] ?? '',
+            name: s['name'] ?? '',
+            sponsor: s['sponsor'] ?? '',
+            country: s['country'] ?? '',
+            countryCode: s['cc'] ?? '',
+            distance: (s['distance'] as num?)?.toDouble() ?? 0,
+          );
+
+          // Only add if not already in list
+          if (!_availableServers.any((existing) => existing.url == server.url)) {
+            newServers.add(server);
+          }
+        }
+
+        if (newServers.isNotEmpty) {
+          _availableServers.addAll(newServers);
+          _saveServers();
+          // Quick ping the new servers to get latency for sorting
+          _autoPickBest(newServers);
+        }
+      }
+    } catch (e) {
+      _log('Remote search error: $e', level: 'ERROR');
+    } finally {
+      _isSearchingRemote = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> findBestServer({bool replace = false}) async {
     _isRefreshing = true;
+    if (replace) {
+      _availableServers.clear();
+      _selectedServer = null;
+      _serverName = _searchQuery.isEmpty ? 'Refreshing...' : 'Searching $_searchQuery...';
+      _serverSponsor = 'Fetching servers';
+    }
     notifyListeners();
 
     List<SpeedTestServer> discovered = [];
-    for (var discoveryUrl in _discoveryUrls) {
+    
+    // Construct URLs with search query if present
+    final List<String> urlsToFetch = [];
+    if (_searchQuery.isNotEmpty) {
+      urlsToFetch.add('https://www.speedtest.net/api/js/servers?search=${Uri.encodeComponent(_searchQuery)}&limit=50');
+    } else {
+      urlsToFetch.addAll(_discoveryUrls);
+    }
+
+    for (var discoveryUrl in urlsToFetch) {
       try {
         final res = await http
             .get(
@@ -201,6 +325,9 @@ class SpeedTestProvider extends ChangeNotifier {
                   url: s['url'] ?? '',
                   name: s['name'] ?? '',
                   sponsor: s['sponsor'] ?? '',
+                  country: s['country'] ?? '',
+                  countryCode: s['cc'] ?? '',
+                  distance: (s['distance'] as num?)?.toDouble() ?? 0,
                 ),
               );
             }
@@ -212,16 +339,12 @@ class SpeedTestProvider extends ChangeNotifier {
                   url: node.getAttribute('url') ?? '',
                   name: node.getAttribute('name') ?? '',
                   sponsor: node.getAttribute('sponsor') ?? '',
+                  country: node.getAttribute('country') ?? '',
                 ),
               );
             }
           }
           if (discovered.isNotEmpty) break;
-        } else {
-          _log(
-            'Server fetch failed: HTTP ${res.statusCode} from $discoveryUrl',
-            level: 'WARN',
-          );
         }
       } catch (e) {
         _log('Server fetch error: $e', level: 'ERROR');
@@ -230,20 +353,21 @@ class SpeedTestProvider extends ChangeNotifier {
 
     _isRefreshing = false;
     if (discovered.isNotEmpty) {
-      final existingUrls = _availableServers.map((s) => s.url).toSet();
-      for (var s in discovered) {
-        if (!existingUrls.contains(s.url)) {
-          _availableServers.add(s);
+      if (replace) {
+        _availableServers = discovered;
+      } else {
+        final existingUrls = _availableServers.map((s) => s.url).toSet();
+        for (var s in discovered) {
+          if (!existingUrls.contains(s.url)) {
+            _availableServers.add(s);
+          }
         }
       }
       await _saveServers();
-      if (_selectedServer == null) {
-        await _autoPickBest(discovered);
+      if (_selectedServer == null || replace) {
+        await _autoPickBest(_availableServers);
       }
-    } else {
-      _log('No servers discovered (using cache only)', level: 'WARN');
     }
-    _isRefreshing = false;
     notifyListeners();
   }
 
@@ -318,6 +442,31 @@ class SpeedTestProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _runDemoTest() async {
+    final rand = math.Random();
+    _status = 'Latency...';
+    notifyListeners();
+    await Future.delayed(const Duration(milliseconds: 800));
+    _latency = 10 + rand.nextInt(20);
+    _jitter = 1 + rand.nextInt(5);
+
+    _status = 'Download...';
+    for (int i = 0; i < 20; i++) {
+      if (!_isTesting) return;
+      await Future.delayed(const Duration(milliseconds: 200));
+      _downloadSpeed = 400 + rand.nextDouble() * 100;
+      notifyListeners();
+    }
+
+    _status = 'Upload...';
+    for (int i = 0; i < 20; i++) {
+      if (!_isTesting) return;
+      await Future.delayed(const Duration(milliseconds: 200));
+      _uploadSpeed = 200 + rand.nextDouble() * 50;
+      notifyListeners();
+    }
+  }
+
   Future<void> startTest({Function()? onFinish}) async {
     if (_isTesting) return;
     _isTesting = true;
@@ -328,11 +477,15 @@ class SpeedTestProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _status = 'Latency...';
-      notifyListeners();
-      await _runLatencyTest();
-      await _runParallelDownload();
-      await _runParallelUpload();
+      if (_isDemoMode) {
+        await _runDemoTest();
+      } else {
+        _status = 'Latency...';
+        notifyListeners();
+        await _runLatencyTest();
+        await _runParallelDownload();
+        await _runParallelUpload();
+      }
       _status = 'Complete';
       if (onFinish != null) onFinish();
     } catch (e) {

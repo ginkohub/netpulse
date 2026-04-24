@@ -7,6 +7,7 @@ import 'services/settings_service.dart';
 import 'services/speedtest_history.dart';
 import 'services/log_service.dart';
 import 'services/update_service.dart';
+import 'services/mikrotik_service.dart';
 import 'pages/home_page.dart';
 import 'database/database.dart';
 
@@ -27,14 +28,27 @@ class NetPulseApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<LogProvider>.value(value: logProvider),
-        ChangeNotifierProvider(create: (context) => PingProvider()),
-        ChangeNotifierProvider(create: (context) => WifiProvider()),
+        ChangeNotifierProvider(
+          create: (context) => PingProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => WifiProvider(logger: logProvider),
+        ),
         ChangeNotifierProvider(
           create: (context) => SpeedTestProvider(logger: logProvider),
         ),
-        ChangeNotifierProvider(create: (context) => SettingsProvider()),
-        ChangeNotifierProvider(create: (context) => HistoryProvider()),
-        ChangeNotifierProvider(create: (context) => UpdateProvider()),
+        ChangeNotifierProvider(
+          create: (context) => SettingsProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => HistoryProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => UpdateProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => MikrotikProvider(logger: logProvider),
+        ),
       ],
       child: MaterialApp(
         title: 'NetPulse',

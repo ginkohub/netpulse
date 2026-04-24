@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 
 class AppDatabase {
   static String? _dir;
+  static final Map<String, Map<String, dynamic>> _cache = {};
 
   static Future<String> get dbDir async {
     _dir ??= (await getApplicationSupportDirectory()).path;
@@ -16,25 +17,30 @@ class AppDatabase {
   }
 
   static Future<Map<String, dynamic>> loadJson(String name) async {
+    if (_cache.containsKey(name)) return _cache[name]!;
     try {
       final f = await file(name);
       if (await f.exists()) {
         final content = await f.readAsString();
-        if (content.isEmpty) return {};
-        return jsonDecode(content) as Map<String, dynamic>;
+        if (content.isEmpty) {
+          _cache[name] = {};
+          return {};
+        }
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        _cache[name] = data;
+        return data;
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (_) {}
+    _cache[name] = {};
     return {};
   }
 
   static Future<void> saveJson(String name, Map<String, dynamic> data) async {
+    _cache[name] = data;
     final f = await file(name);
     await f.writeAsString(jsonEncode(data));
   }
 
-  // --- Settings (settings.json) ---
   static Future<Map<String, dynamic>> getSettings() => loadJson('settings');
 
   static Future<void> setSetting(String key, dynamic value) async {
@@ -48,7 +54,6 @@ class AppDatabase {
     return data[key] as T?;
   }
 
-  // --- Speedtest (speedtest.json) ---
   static Future<Map<String, dynamic>> getSpeedtest() => loadJson('speedtest');
 
   static Future<void> setSpeedtestSetting(String key, dynamic value) async {
@@ -72,7 +77,6 @@ class AppDatabase {
     await saveJson('speedtest', data);
   }
 
-  // --- MikroTik (mikrotik.json) ---
   static Future<Map<String, dynamic>> getMikrotik() => loadJson('mikrotik');
 
   static Future<void> setMikrotikCard(
@@ -96,7 +100,6 @@ class AppDatabase {
     await saveJson('mikrotik', data);
   }
 
-  // --- Ping (ping.json) ---
   static Future<Map<String, dynamic>> getPing() => loadJson('ping');
 
   static Future<void> setPingCard(
@@ -114,7 +117,6 @@ class AppDatabase {
     await saveJson('ping', data);
   }
 
-  // --- WiFi (wifi.json) ---
   static Future<Map<String, dynamic>> getWifi() => loadJson('wifi');
 
   static Future<void> setWifiSetting(String key, dynamic value) async {
@@ -128,7 +130,6 @@ class AppDatabase {
     return data[key] as T?;
   }
 
-  // Compatibility aliases (if needed by other files I haven't seen yet)
   static Future<Map<String, dynamic>> getAppSettings() => getSettings();
   static Future<void> setAppSetting(String key, dynamic value) =>
       setSetting(key, value);
@@ -152,5 +153,29 @@ class AppDatabase {
     entry['id'] = id;
     await addSpeedtestHistory(entry);
     return id;
+  }
+
+  static const List<String> _allFiles = [
+    'settings',
+    'speedtest',
+    'mikrotik',
+    'ping',
+    'wifi',
+  ];
+
+  static Future<Map<String, dynamic>> exportAllData() async {
+    final Map<String, dynamic> allData = {};
+    for (final name in _allFiles) {
+      allData[name] = await loadJson(name);
+    }
+    return allData;
+  }
+
+  static Future<void> importAllData(Map<String, dynamic> data) async {
+    for (final name in _allFiles) {
+      if (data.containsKey(name)) {
+        await saveJson(name, Map<String, dynamic>.from(data[name]));
+      }
+    }
   }
 }
