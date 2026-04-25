@@ -135,7 +135,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _initNotifications() async {
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@mipmap/launcher_icon',
     );
     const linuxSettings = LinuxInitializationSettings(
       defaultActionName: 'Open',
@@ -624,13 +624,14 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (currentState != result.lastAlertedState) {
-        if (currentState == 'high_latency') {
+        if (currentState == 'high_latency' && result.notifyOnHighLatency) {
           result.lastNotifyTime = now;
           _sendNotification(
             'High Latency: ${result.displayName}',
             '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
           );
-        } else if (result.lastAlertedState == 'high_latency') {
+        } else if (result.lastAlertedState == 'high_latency' &&
+            (result.notifyOnHighLatency || result.notifyOnTimeout)) {
           result.lastNotifyTime = now;
           _sendNotification(
             'Recovered: ${result.displayName}',
@@ -638,7 +639,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
           );
         }
         result.lastAlertedState = currentState;
-      } else if (currentState == 'high_latency') {
+      } else if (currentState == 'high_latency' && result.notifyOnHighLatency) {
         if (result.lastNotifyTime == null ||
             now.difference(result.lastNotifyTime!) >
                 const Duration(minutes: 1)) {
@@ -708,16 +709,20 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
                   '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)';
             } else if (currentState == 'normal' &&
                 result.lastAlertedState != null &&
-                result.lastAlertedState != 'normal') {
+                result.lastAlertedState != 'normal' &&
+                (result.notifyOnTimeout || result.notifyOnHighLatency)) {
               shouldNotify = true;
               alertTitle = 'Recovered: ${result.displayName}';
               alertBody = 'Connection is back to normal (${result.latency}ms)';
             }
             result.lastAlertedState = currentState;
           } else if (currentState != 'normal') {
-            if (result.lastNotifyTime == null ||
+            bool toggleOn = (currentState == 'timeout' && result.notifyOnTimeout) ||
+                            (currentState == 'high_latency' && result.notifyOnHighLatency);
+            
+            if (toggleOn && (result.lastNotifyTime == null ||
                 now.difference(result.lastNotifyTime!) >
-                    const Duration(minutes: 1)) {
+                    const Duration(minutes: 1))) {
               shouldNotify = true;
               if (currentState == 'timeout') {
                 alertTitle = 'Still Timeout: ${result.displayName}';
