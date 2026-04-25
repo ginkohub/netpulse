@@ -40,8 +40,9 @@ class PingResultModel {
   }) : history = history ?? [];
 
   double get averageLatency {
-    if (history.isEmpty) return 0;
-    return history.reduce((a, b) => a + b) / history.length;
+    final validPings = history.where((l) => l >= 0).toList();
+    if (validPings.isEmpty) return 0;
+    return validPings.reduce((a, b) => a + b) / validPings.length;
   }
 }
 
@@ -577,8 +578,8 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
               );
             }
 
-            // Record failure as 0 for heatmap
-            result.history.add(0);
+            // Record failure as -1 for heatmap/stats
+            result.history.add(-1);
           } else {
             final avg = result.averageLatency;
             if (result.notifyOnHighLatency && avg > 0) {

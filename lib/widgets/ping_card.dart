@@ -90,7 +90,9 @@ class PingCard extends StatelessWidget {
                               Colors.blueGrey.withAlpha(200),
                           getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                             return touchedBarSpots.map((barSpot) {
-                              if (barSpot.y == 0) {
+                              final originalValue =
+                                  item.history[barSpot.x.toInt()];
+                              if (originalValue == -1) {
                                 return const LineTooltipItem(
                                   'TIMEOUT',
                                   TextStyle(
@@ -101,7 +103,7 @@ class PingCard extends StatelessWidget {
                                 );
                               }
                               return LineTooltipItem(
-                                '${barSpot.y.toInt()} ms',
+                                '${originalValue} ms',
                                 const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -151,7 +153,7 @@ class PingCard extends StatelessWidget {
                               .map(
                                 (e) => FlSpot(
                                   e.key.toDouble(),
-                                  e.value.toDouble(),
+                                  e.value < 0 ? 0 : e.value.toDouble(),
                                 ),
                               )
                               .toList(),
@@ -192,8 +194,8 @@ class PingCard extends StatelessWidget {
   }
 
   Widget _buildStats(PingResultModel item) {
-    final validPings = item.history.where((l) => l > 0).toList();
-    final lossCount = item.history.where((l) => l == 0).length;
+    final validPings = item.history.where((l) => l >= 0).toList();
+    final lossCount = item.history.where((l) => l == -1).length;
     final lossPercent = (lossCount / item.history.length * 100).toStringAsFixed(
       0,
     );
