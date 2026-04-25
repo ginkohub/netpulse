@@ -41,11 +41,10 @@ class AboutPage extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.blueAccent.withAlpha(30),
                       borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.network_check,
-                      size: 48,
-                      color: Colors.blueAccent,
+                      image: const DecorationImage(
+                        image: AssetImage('netpulse.png'),
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
