@@ -4,12 +4,16 @@ import '../services/ping_service.dart';
 import '../services/wifi_service.dart';
 import '../services/settings_service.dart';
 import '../services/speedtest_service.dart';
+import '../services/port_scanner_service.dart';
+import '../services/ip_scanner_service.dart';
 import 'log_page.dart';
 import 'about_page.dart';
 import '../widgets/wifi_info_card.dart';
 import '../widgets/mikrotik_card.dart';
 import '../widgets/speed_test_card.dart';
 import '../widgets/ping_card.dart';
+import '../widgets/port_scanner_card.dart';
+import '../widgets/ip_scanner_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -41,20 +45,27 @@ class _HomePageState extends State<HomePage> {
           'Add Host to Monitor',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
-        content: TextField(
-          controller: _hostController,
-          autofocus: true,
-          style: const TextStyle(fontSize: 14),
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'e.g. 192.168.1.1 or google.com',
-            hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-            border: OutlineInputBorder(),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _hostController,
+                autofocus: true,
+                style: const TextStyle(fontSize: 14),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'e.g. 192.168.1.1 or google.com',
+                  hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) {
+                  _addHost();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
           ),
-          onSubmitted: (_) {
-            _addHost();
-            Navigator.pop(context);
-          },
         ),
         actions: [
           TextButton(
@@ -223,29 +234,42 @@ class _HomePageState extends State<HomePage> {
           'App Settings',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
-        content: Consumer3<PingProvider, WifiProvider, SpeedTestProvider>(
-          builder: (context, ping, wifi, speed, child) => SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SwitchListTile(
-                  dense: true,
-                  title: const Text('Global Demo Mode',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orangeAccent)),
-                  value: ping.isDemoMode,
-                  onChanged: (v) {
-                    ping.setDemoMode(v);
-                    wifi.setDemoMode(v);
-                    speed.setDemoMode(v);
-                  },
-                ),
-              ],
+        content:
+            Consumer5<
+              PingProvider,
+              WifiProvider,
+              SpeedTestProvider,
+              PortScannerProvider,
+              IPScannerProvider
+            >(
+              builder: (context, ping, wifi, speed, port, ip, child) =>
+                  SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SwitchListTile(
+                          dense: true,
+                          title: const Text(
+                            'Global Demo Mode',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orangeAccent,
+                            ),
+                          ),
+                          value: ping.isDemoMode,
+                          onChanged: (v) {
+                            ping.setDemoMode(v);
+                            wifi.setDemoMode(v);
+                            speed.setDemoMode(v);
+                            port.setDemoMode(v);
+                            ip.setDemoMode(v);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
             ),
-          ),
-        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -427,6 +451,14 @@ class _HomePageState extends State<HomePage> {
                       }
                       card = PingCard(item: result);
                       break;
+                    case DashboardItemType.portScanner:
+                      itemKey = 'port_scanner_$index';
+                      card = const PortScannerCard();
+                      break;
+                    case DashboardItemType.ipScanner:
+                      itemKey = 'ip_scanner_$index';
+                      card = const IPScannerCard();
+                      break;
                   }
 
                   // Root of the item MUST have the stable key
@@ -449,12 +481,13 @@ class _HomePageState extends State<HomePage> {
                     direction: isReorder
                         ? DismissDirection.none
                         : (item.type == DashboardItemType.ping
-                            ? DismissDirection.horizontal
-                            : DismissDirection.endToStart),
+                              ? DismissDirection.horizontal
+                              : DismissDirection.endToStart),
                     confirmDismiss: (direction) async {
                       if (direction == DismissDirection.startToEnd) {
                         final val = item.value;
-                        if (item.type == DashboardItemType.ping && val != null) {
+                        if (item.type == DashboardItemType.ping &&
+                            val != null) {
                           provider.toggleHost(val);
                         }
                         return false;
@@ -473,7 +506,9 @@ class _HomePageState extends State<HomePage> {
                         );
                       }
                     },
-                    background: item.type == DashboardItemType.ping && item.value != null
+                    background:
+                        item.type == DashboardItemType.ping &&
+                            item.value != null
                         ? Container(
                             color: Colors.blueAccent,
                             alignment: Alignment.centerLeft,
@@ -491,7 +526,8 @@ class _HomePageState extends State<HomePage> {
                             padding: const EdgeInsets.only(right: 20),
                             child: const Icon(Icons.delete, size: 24),
                           ),
-                    secondaryBackground: item.type == DashboardItemType.ping &&
+                    secondaryBackground:
+                        item.type == DashboardItemType.ping &&
                             item.value != null
                         ? Container(
                             color: Colors.redAccent,
@@ -526,59 +562,99 @@ class _HomePageState extends State<HomePage> {
     final provider = context.read<PingProvider>();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text(
-                'Add Card',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  'Add Card',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.wifi),
-              title: const Text('WiFi Info'),
-              enabled: !provider.items.any(
-                (i) => i.type == DashboardItemType.wifi,
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.wifi),
+                        title: const Text('WiFi Info'),
+                        enabled: !provider.items.any(
+                          (i) => i.type == DashboardItemType.wifi,
+                        ),
+                        onTap: () {
+                          provider.addItem(DashboardItemType.wifi);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.router),
+                        title: const Text('MikroTik'),
+                        onTap: () {
+                          final newKey =
+                              'mikrotik_${DateTime.now().millisecondsSinceEpoch}';
+                          provider.addItem(
+                            DashboardItemType.mikrotik,
+                            value: newKey,
+                          );
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.speed),
+                        title: const Text('Speed Test'),
+                        enabled: !provider.items.any(
+                          (i) => i.type == DashboardItemType.speedtest,
+                        ),
+                        onTap: () {
+                          provider.addItem(DashboardItemType.speedtest);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.network_ping),
+                        title: const Text('Ping Host'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showAddHostDialog(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.search),
+                        title: const Text('Port Scanner'),
+                        enabled: !provider.items.any(
+                          (i) => i.type == DashboardItemType.portScanner,
+                        ),
+                        onTap: () {
+                          provider.addItem(DashboardItemType.portScanner);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.settings_remote),
+                        title: const Text('IP Scanner'),
+                        enabled: !provider.items.any(
+                          (i) => i.type == DashboardItemType.ipScanner,
+                        ),
+                        onTap: () {
+                          provider.addItem(DashboardItemType.ipScanner);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              onTap: () {
-                provider.addItem(DashboardItemType.wifi);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.router),
-              title: const Text('MikroTik'),
-              onTap: () {
-                final newKey =
-                    'mikrotik_${DateTime.now().millisecondsSinceEpoch}';
-                provider.addItem(DashboardItemType.mikrotik, value: newKey);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.speed),
-              title: const Text('Speed Test'),
-              enabled: !provider.items.any(
-                (i) => i.type == DashboardItemType.speedtest,
-              ),
-              onTap: () {
-                provider.addItem(DashboardItemType.speedtest);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.network_ping),
-              title: const Text('Ping Host'),
-              onTap: () {
-                Navigator.pop(context);
-                _showAddHostDialog(context);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

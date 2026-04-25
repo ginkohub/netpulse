@@ -87,7 +87,10 @@ class HistoryProvider extends ChangeNotifier {
       lat = pos.latitude;
       lon = pos.longitude;
     } catch (_) {
-      logger?.addLog('Location fetching failed for history geotag', level: 'WARN');
+      logger?.addLog(
+        'Location fetching failed for history geotag',
+        level: 'WARN',
+      );
     }
 
     final now = DateTime.now();

@@ -8,6 +8,8 @@ import 'services/speedtest_history.dart';
 import 'services/log_service.dart';
 import 'services/update_service.dart';
 import 'services/mikrotik_service.dart';
+import 'services/port_scanner_service.dart';
+import 'services/ip_scanner_service.dart';
 import 'pages/home_page.dart';
 import 'database/database.dart';
 
@@ -48,6 +50,12 @@ class NetPulseApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (context) => MikrotikProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => PortScannerProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => IPScannerProvider(logger: logProvider),
         ),
       ],
       child: MaterialApp(

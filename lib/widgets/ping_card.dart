@@ -403,7 +403,7 @@ class PingCard extends StatelessWidget {
                           value: threshold,
                           isDense: true,
                           underline: const SizedBox(),
-                          items: [10, 20, 30, 50, 100, 200]
+                          items: [10, 20, 30, 50, 100, 200, 500, 1000]
                               .map(
                                 (v) => DropdownMenuItem(
                                   value: v,

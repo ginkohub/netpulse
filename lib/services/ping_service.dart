@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:dart_ping/dart_ping.dart';
 import 'package:flutter/material.dart';
 import '../database/database.dart' show AppDatabase;
@@ -20,6 +21,8 @@ class PingResultModel {
   int latencyThresholdPercent;
   int interval;
   DateTime? lastPingTime;
+  DateTime? lastNotifyTime;
+  String? lastAlertedState;
   List<int> history;
 
   PingResultModel({
@@ -36,8 +39,12 @@ class PingResultModel {
     this.latencyThresholdPercent = 50,
     this.interval = 1,
     this.lastPingTime,
+    this.lastNotifyTime,
+    this.lastAlertedState,
     List<int>? history,
   }) : history = history ?? [];
+
+  String get displayName => (name != null && name!.isNotEmpty) ? name! : host;
 
   double get averageLatency {
     final validPings = history.where((l) => l >= 0).toList();
@@ -46,7 +53,14 @@ class PingResultModel {
   }
 }
 
-enum DashboardItemType { wifi, mikrotik, speedtest, ping }
+enum DashboardItemType {
+  wifi,
+  mikrotik,
+  speedtest,
+  ping,
+  portScanner,
+  ipScanner,
+}
 
 class DashboardItem {
   final DashboardItemType type;
@@ -86,6 +100,8 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  static const String _groupKey = 'com.ginkohub.netpulse.PING_ALERTS';
+
   bool _isReorderEnabled = false;
   bool get isReorderEnabled => _isReorderEnabled;
 
@@ -118,44 +134,98 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _initNotifications() async {
-    const androidSettings = AndroidInitializationSettings('launcher_icon');
-    const linuxSettings = LinuxInitializationSettings(defaultActionName: 'Open');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const linuxSettings = LinuxInitializationSettings(
+      defaultActionName: 'Open',
+    );
     const initSettings = InitializationSettings(
       android: androidSettings,
       linux: linuxSettings,
     );
     await _notificationsPlugin.initialize(settings: initSettings);
+
+    if (Platform.isAndroid) {
+      final plugin = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (plugin != null) {
+        await plugin.requestNotificationsPermission();
+      }
+    }
   }
 
   Future<void> _sendNotification(String title, String body) async {
-    const androidDetails = AndroidNotificationDetails(
+    const channel = AndroidNotificationChannel(
       'ping_alerts',
       'Ping Alerts',
-      channelDescription: 'Notifications for ping timeouts and high latency',
+      description: 'Notifications for ping timeouts and high latency',
       importance: Importance.high,
-      priority: Priority.high,
     );
+
+    final androidDetails = AndroidNotificationDetails(
+      channel.id,
+      channel.name,
+      channelDescription: channel.description,
+      importance: channel.importance,
+      priority: Priority.high,
+      groupKey: _groupKey,
+    );
+
     const linuxDetails = LinuxNotificationDetails();
-    const notificationDetails = NotificationDetails(
+    final notificationDetails = NotificationDetails(
       android: androidDetails,
       linux: linuxDetails,
     );
+
     await _notificationsPlugin.show(
       id: DateTime.now().millisecondsSinceEpoch.hashCode,
       title: title,
       body: body,
       notificationDetails: notificationDetails,
     );
+
+    if (Platform.isAndroid) {
+      final summaryAndroidDetails = AndroidNotificationDetails(
+        channel.id,
+        channel.name,
+        channelDescription: channel.description,
+        importance: channel.importance,
+        priority: Priority.high,
+        groupKey: _groupKey,
+        setAsGroupSummary: true,
+      );
+      final summaryDetails = NotificationDetails(
+        android: summaryAndroidDetails,
+      );
+      await _notificationsPlugin.show(
+        id: 0,
+        title: 'Network Alerts',
+        body: 'Multiple issues detected',
+        notificationDetails: summaryDetails,
+      );
+    }
   }
 
   Future<void> _checkConnectivity(List<ConnectivityResult> results) async {
+    final oldHasNetwork = _hasNetwork;
     _hasNetwork =
         results.isNotEmpty && !results.contains(ConnectivityResult.none);
+
     if (!_hasNetwork) {
       for (var result in _results.values) {
         result.isOnline = false;
         result.latency = null;
         result.error = 'No Network';
+      }
+      notifyListeners();
+    } else if (!oldHasNetwork && _hasNetwork) {
+      for (var result in _results.values) {
+        if (result.error == 'No Network') {
+          result.error = null;
+        }
       }
       notifyListeners();
     }
@@ -215,7 +285,6 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   void addHost(String host, {bool save = true}) async {
     if (host.isEmpty) return;
 
-    // Check if host already exists to reset history instead of adding duplicate
     String? existingId;
     for (var entry in _results.entries) {
       if (entry.value.host.toLowerCase() == host.toLowerCase()) {
@@ -486,7 +555,8 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _runNextPingBatch() async {
     while (_isLooping) {
-      if (!_hasNetwork) {
+      if (!_hasNetwork && !_isDemoMode) {
+        _throttledNotify();
         await Future.delayed(const Duration(seconds: 1));
         continue;
       }
@@ -497,8 +567,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
             final r = e.value;
             if (r.isPaused) return false;
 
-            // If backgrounded, only allow if global setting is off OR individual keepAlive is on
-            if (_isBackgrounded && _pauseOnBackground && !r.keepAliveInBackground) {
+            if (_isBackgrounded &&
+                _pauseOnBackground &&
+                !r.keepAliveInBackground) {
               return false;
             }
 
@@ -528,7 +599,10 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _pingSingleHost(String id) async {
     final result = _results[id];
     if (result == null || result.isPaused) return;
-    if (!_isDemoMode && !_hasNetwork) return;
+    if (!_isDemoMode && !_hasNetwork) {
+      _throttledNotify();
+      return;
+    }
 
     result.lastPingTime = DateTime.now();
 
@@ -538,6 +612,44 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       result.latency = latency;
       result.isOnline = true;
       result.error = null;
+
+      final now = DateTime.now();
+      final avg = result.averageLatency;
+      String currentState = 'normal';
+      final threshold = avg * (1 + result.latencyThresholdPercent / 100);
+      if (result.notifyOnHighLatency &&
+          avg > 0 &&
+          result.latency! >= threshold) {
+        currentState = 'high_latency';
+      }
+
+      if (currentState != result.lastAlertedState) {
+        if (currentState == 'high_latency') {
+          result.lastNotifyTime = now;
+          _sendNotification(
+            'High Latency: ${result.displayName}',
+            '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
+          );
+        } else if (result.lastAlertedState == 'high_latency') {
+          result.lastNotifyTime = now;
+          _sendNotification(
+            'Recovered: ${result.displayName}',
+            'Connection is back to normal (${result.latency}ms)',
+          );
+        }
+        result.lastAlertedState = currentState;
+      } else if (currentState == 'high_latency') {
+        if (result.lastNotifyTime == null ||
+            now.difference(result.lastNotifyTime!) >
+                const Duration(minutes: 1)) {
+          result.lastNotifyTime = now;
+          _sendNotification(
+            'Still High Latency: ${result.displayName}',
+            '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
+          );
+        }
+      }
+
       result.history.add(latency);
       if (result.history.length > 60) {
         result.history.removeAt(0);
@@ -566,33 +678,69 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
           }
         },
         onDone: () async {
+          final now = DateTime.now();
+          final avg = result.averageLatency;
+          String currentState = 'normal';
+
+          if (!hasSuccess) {
+            currentState = 'timeout';
+          } else if (result.notifyOnHighLatency && avg > 0) {
+            final threshold = avg * (1 + result.latencyThresholdPercent / 100);
+            if (result.latency! >= threshold) {
+              currentState = 'high_latency';
+            }
+          }
+
+          bool shouldNotify = false;
+          String alertTitle = '';
+          String alertBody = '';
+
+          if (currentState != result.lastAlertedState) {
+            if (currentState == 'timeout' && result.notifyOnTimeout) {
+              shouldNotify = true;
+              alertTitle = 'Timeout: ${result.displayName}';
+              alertBody = 'Device is unreachable';
+            } else if (currentState == 'high_latency' &&
+                result.notifyOnHighLatency) {
+              shouldNotify = true;
+              alertTitle = 'High Latency: ${result.displayName}';
+              alertBody =
+                  '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)';
+            } else if (currentState == 'normal' &&
+                result.lastAlertedState != null &&
+                result.lastAlertedState != 'normal') {
+              shouldNotify = true;
+              alertTitle = 'Recovered: ${result.displayName}';
+              alertBody = 'Connection is back to normal (${result.latency}ms)';
+            }
+            result.lastAlertedState = currentState;
+          } else if (currentState != 'normal') {
+            if (result.lastNotifyTime == null ||
+                now.difference(result.lastNotifyTime!) >
+                    const Duration(minutes: 1)) {
+              shouldNotify = true;
+              if (currentState == 'timeout') {
+                alertTitle = 'Still Timeout: ${result.displayName}';
+                alertBody = 'Device remains unreachable';
+              } else {
+                alertTitle = 'Still High Latency: ${result.displayName}';
+                alertBody =
+                    '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)';
+              }
+            }
+          }
+
+          if (shouldNotify) {
+            result.lastNotifyTime = now;
+            _sendNotification(alertTitle, alertBody);
+          }
+
           if (!hasSuccess) {
             result.isOnline = false;
             result.latency = null;
             result.error ??= 'No Response';
-
-            if (result.notifyOnTimeout) {
-              _sendNotification(
-                'Ping Timeout',
-                '${result.name ?? result.host} is unreachable',
-              );
-            }
-
-            // Record failure as -1 for heatmap/stats
             result.history.add(-1);
           } else {
-            final avg = result.averageLatency;
-            if (result.notifyOnHighLatency && avg > 0) {
-              final threshold =
-                  avg * (1 + result.latencyThresholdPercent / 100);
-              if (result.latency! > threshold) {
-                _sendNotification(
-                  'High Latency Alert',
-                  '${result.name ?? result.host}: ${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
-                );
-              }
-            }
-            // Update history with latency
             result.history.add(result.latency!);
           }
 

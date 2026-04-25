@@ -25,8 +25,8 @@ class WifiService {
     try {
       final int speed = await _channel.invokeMethod('getLinkSpeed');
       return speed;
-    } on PlatformException catch (e) {
-      _logError('getLinkSpeed', e.message);
+    } catch (e) {
+      _logError('getLinkSpeed', e.toString());
       return null;
     }
   }
@@ -35,8 +35,8 @@ class WifiService {
     try {
       final int frequency = await _channel.invokeMethod('getFrequency');
       return frequency;
-    } on PlatformException catch (e) {
-      _logError('getFrequency', e.message);
+    } catch (e) {
+      _logError('getFrequency', e.toString());
       return null;
     }
   }
@@ -45,8 +45,8 @@ class WifiService {
     try {
       final int rssi = await _channel.invokeMethod('getRssi');
       return rssi;
-    } on PlatformException catch (e) {
-      _logError('getRssi', e.message);
+    } catch (e) {
+      _logError('getRssi', e.toString());
       return null;
     }
   }
@@ -55,8 +55,8 @@ class WifiService {
     try {
       final String mac = await _channel.invokeMethod('getMacAddress');
       return mac;
-    } on PlatformException catch (e) {
-      _logError('getMacAddress', e.message);
+    } catch (e) {
+      _logError('getMacAddress', e.toString());
       return null;
     }
   }
@@ -72,8 +72,8 @@ class WifiService {
         _logError('getWifiInfo', error);
       }
       return result;
-    } on PlatformException catch (e) {
-      _logError('getWifiInfo', e.message);
+    } catch (e) {
+      _logError('getWifiInfo', e.toString());
       return null;
     }
   }
@@ -82,8 +82,8 @@ class WifiService {
     try {
       final String ip = await _channel.invokeMethod('getIpAddress');
       return ip;
-    } on PlatformException catch (e) {
-      _logError('getIpAddress', e.message);
+    } catch (e) {
+      _logError('getIpAddress', e.toString());
       return null;
     }
   }
@@ -92,8 +92,8 @@ class WifiService {
     try {
       final String gateway = await _channel.invokeMethod('getGateway');
       return gateway;
-    } on PlatformException catch (e) {
-      _logError('getGateway', e.message);
+    } catch (e) {
+      _logError('getGateway', e.toString());
       return null;
     }
   }
@@ -102,8 +102,8 @@ class WifiService {
     try {
       final String dns = await _channel.invokeMethod('getDns');
       return dns;
-    } on PlatformException catch (e) {
-      _logError('getDns', e.message);
+    } catch (e) {
+      _logError('getDns', e.toString());
       return null;
     }
   }
@@ -119,8 +119,8 @@ class WifiService {
         _logError('getConnectivityInfo', error);
       }
       return result;
-    } on PlatformException catch (e) {
-      _logError('getConnectivityInfo', e.message);
+    } catch (e) {
+      _logError('getConnectivityInfo', e.toString());
       return null;
     }
   }

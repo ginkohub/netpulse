@@ -105,6 +105,7 @@ class SpeedTestProvider extends ChangeNotifier {
     list.sort((a, b) => a.latency.compareTo(b.latency));
     return list;
   }
+
   SpeedTestServer? get selectedServer => _selectedServer;
 
   SpeedTestProvider({this.logger}) {
@@ -247,8 +248,9 @@ class SpeedTestProvider extends ChangeNotifier {
     try {
       final url =
           'https://www.speedtest.net/api/js/servers?search=${Uri.encodeComponent(query)}';
-      final res =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final res = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
 
       if (res.statusCode == 200) {
         final List<dynamic> data = jsonDecode(res.body);
@@ -265,7 +267,9 @@ class SpeedTestProvider extends ChangeNotifier {
           );
 
           // Only add if not already in list
-          if (!_availableServers.any((existing) => existing.url == server.url)) {
+          if (!_availableServers.any(
+            (existing) => existing.url == server.url,
+          )) {
             newServers.add(server);
           }
         }
@@ -290,17 +294,21 @@ class SpeedTestProvider extends ChangeNotifier {
     if (replace) {
       _availableServers.clear();
       _selectedServer = null;
-      _serverName = _searchQuery.isEmpty ? 'Refreshing...' : 'Searching $_searchQuery...';
+      _serverName = _searchQuery.isEmpty
+          ? 'Refreshing...'
+          : 'Searching $_searchQuery...';
       _serverSponsor = 'Fetching servers';
     }
     notifyListeners();
 
     List<SpeedTestServer> discovered = [];
-    
+
     // Construct URLs with search query if present
     final List<String> urlsToFetch = [];
     if (_searchQuery.isNotEmpty) {
-      urlsToFetch.add('https://www.speedtest.net/api/js/servers?search=${Uri.encodeComponent(_searchQuery)}&limit=50');
+      urlsToFetch.add(
+        'https://www.speedtest.net/api/js/servers?search=${Uri.encodeComponent(_searchQuery)}&limit=50',
+      );
     } else {
       urlsToFetch.addAll(_discoveryUrls);
     }
