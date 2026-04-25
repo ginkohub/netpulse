@@ -103,7 +103,7 @@ class PingCard extends StatelessWidget {
                                 );
                               }
                               return LineTooltipItem(
-                                '${originalValue} ms',
+                                '$originalValue ms',
                                 const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -252,10 +252,9 @@ class PingCard extends StatelessWidget {
             final newHost = ctrlHost.text.trim().toLowerCase();
 
             if (newHost.isEmpty) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(
-                  const SnackBar(content: Text('Host cannot be empty')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Host cannot be empty')),
+              );
               return;
             }
 
@@ -266,14 +265,16 @@ class PingCard extends StatelessWidget {
                 notifyTimeout != item.notifyOnTimeout ||
                 notifyHighLatency != item.notifyOnHighLatency ||
                 threshold != item.latencyThresholdPercent) {
-              provider.updatePing(item.id,
-                  host: newHost,
-                  name: newName,
-                  interval: selectedInterval,
-                  keepAliveInBackground: keepAlive,
-                  notifyOnTimeout: notifyTimeout,
-                  notifyOnHighLatency: notifyHighLatency,
-                  latencyThresholdPercent: threshold);
+              provider.updatePing(
+                item.id,
+                host: newHost,
+                name: newName,
+                interval: selectedInterval,
+                keepAliveInBackground: keepAlive,
+                notifyOnTimeout: notifyTimeout,
+                notifyOnHighLatency: notifyHighLatency,
+                latencyThresholdPercent: threshold,
+              );
             }
             Navigator.pop(context);
           }
@@ -317,18 +318,24 @@ class PingCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Ping Interval:',
-                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      const Text(
+                        'Ping Interval:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
                       DropdownButton<int>(
                         value: selectedInterval,
                         isDense: true,
                         underline: const SizedBox(),
                         items: [1, 2, 5, 10, 30, 60]
-                            .map((v) => DropdownMenuItem(
-                                  value: v,
-                                  child: Text('${v}s',
-                                      style: const TextStyle(fontSize: 13)),
-                                ))
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(
+                                  '${v}s',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            )
                             .toList(),
                         onChanged: (v) {
                           if (v != null) setState(() => selectedInterval = v);
@@ -340,8 +347,10 @@ class PingCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Keep alive in bg:',
-                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      const Text(
+                        'Keep alive in bg:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
                       Switch(
                         value: keepAlive,
                         onChanged: (v) {
@@ -353,25 +362,32 @@ class PingCard extends StatelessWidget {
                     ],
                   ),
                   const Divider(),
-                  const Text('Notifications',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueAccent)),
+                  const Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueAccent,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Notify on Timeout',
-                        style: TextStyle(fontSize: 13)),
+                    title: const Text(
+                      'Notify on Timeout',
+                      style: TextStyle(fontSize: 13),
+                    ),
                     value: notifyTimeout,
                     onChanged: (v) => setState(() => notifyTimeout = v),
                   ),
                   SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Notify on High Latency',
-                        style: TextStyle(fontSize: 13)),
+                    title: const Text(
+                      'Notify on High Latency',
+                      style: TextStyle(fontSize: 13),
+                    ),
                     value: notifyHighLatency,
                     onChanged: (v) => setState(() => notifyHighLatency = v),
                   ),
@@ -379,18 +395,24 @@ class PingCard extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Threshold (% avg):',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const Text(
+                          'Threshold (% avg):',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                         DropdownButton<int>(
                           value: threshold,
                           isDense: true,
                           underline: const SizedBox(),
                           items: [10, 20, 30, 50, 100, 200]
-                              .map((v) => DropdownMenuItem(
-                                    value: v,
-                                    child: Text('+$v%',
-                                        style: const TextStyle(fontSize: 12)),
-                                  ))
+                              .map(
+                                (v) => DropdownMenuItem(
+                                  value: v,
+                                  child: Text(
+                                    '+$v%',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              )
                               .toList(),
                           onChanged: (v) {
                             if (v != null) setState(() => threshold = v);
