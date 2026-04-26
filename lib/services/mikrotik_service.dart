@@ -8,6 +8,8 @@ import '../utils/parser.dart';
 import '../utils/formater.dart';
 import 'log_service.dart';
 
+enum UserSort { id, name, address, uptime, bytesIn, bytesOut, rxRate, txRate }
+
 class MikrotikInstance extends ChangeNotifier {
   final String key;
   final LogProvider? logger;
@@ -16,6 +18,9 @@ class MikrotikInstance extends ChangeNotifier {
   bool _isConnected = false;
   bool _isLoading = false;
   bool _isFetching = false;
+  bool _fetchUserDetail = false;
+  UserSort _sortField = UserSort.name;
+  bool _sortAscending = true;
   String _status = 'Disconnected';
   int _activeUsersCount = 0;
   int _cpuLoad = 0;
@@ -31,6 +36,10 @@ class MikrotikInstance extends ChangeNotifier {
   MikrotikConfig get config => _config;
   bool get isConnected => _isConnected;
   bool get isLoading => _isLoading;
+  bool get fetchUserDetail => _fetchUserDetail;
+  UserSort get sortField => _sortField;
+  bool get sortAscending => _sortAscending;
+
   String get status => _status;
   int get activeUsersCount => _activeUsersCount;
   int get cpuLoad => _cpuLoad;
@@ -39,6 +48,42 @@ class MikrotikInstance extends ChangeNotifier {
   MikrotikSystem? get system => _system;
 
   MikrotikInstance({required this.key, this.logger});
+
+  void setSort(UserSort field) {
+    if (_sortField == field) {
+      _sortAscending = !_sortAscending;
+    } else {
+      _sortField = field;
+      _sortAscending = true;
+    }
+    _applySort();
+    notifyListeners();
+  }
+
+  void _applySort() {
+    _activeUsers.sort((a, b) {
+      int cmp;
+      switch (_sortField) {
+        case UserSort.id:
+          cmp = a.id.compareTo(b.id);
+        case UserSort.name:
+          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case UserSort.address:
+          cmp = a.address.compareTo(b.address);
+        case UserSort.uptime:
+          cmp = a.uptime.compareTo(b.uptime);
+        case UserSort.bytesIn:
+          cmp = a.bytesIn.compareTo(b.bytesIn);
+        case UserSort.bytesOut:
+          cmp = a.bytesOut.compareTo(b.bytesOut);
+        case UserSort.rxRate:
+          cmp = a.rxRate.compareTo(b.rxRate);
+        case UserSort.txRate:
+          cmp = a.txRate.compareTo(b.txRate);
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
+  }
 
   Future<void> loadConfig() async {
     final card = await AppDatabase.getMikrotikCard(key);
@@ -119,16 +164,17 @@ class MikrotikInstance extends ChangeNotifier {
         name: 'user$i',
         address: '192.168.1.${10 + idx}',
         uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
-        bytesIn: formatBytes(random * 1000),
-        bytesOut: formatBytes(random * 500),
-        rxRate: formatSpeed(random % 10000),
-        txRate: formatSpeed(random % 5000),
+        bytesIn: random * 1000,
+        bytesOut: random * 500,
+        rxRate: random % 10000,
+        txRate: random % 5000,
       );
     });
 
     _activeUsersCount = userCount;
     _interfaceStats = ifStats;
     _activeUsers = users;
+    _applySort();
     _system = MikrotikSystem(
       name: 'Demo-MikroTik',
       uptime: '${(random ~/ 3600) % 24}h${(random ~/ 60) % 60}m',
@@ -212,7 +258,7 @@ class MikrotikInstance extends ChangeNotifier {
   }
 
   Future<void> _loadUsers() async {
-    if (!_isConnected || _client == null || _activeUsers.isNotEmpty) return;
+    if (!_isConnected || _client == null) return;
     try {
       final hsActive = await _client!.talk(['/ip/hotspot/active/print']);
       final users = <MikrotikUser>[];
@@ -221,6 +267,7 @@ class MikrotikInstance extends ChangeNotifier {
         if (u != null) users.add(u);
       }
       _activeUsers = users;
+      _applySort();
       notifyListeners();
     } catch (e) {
       logger?.addLog(
@@ -275,15 +322,27 @@ class MikrotikInstance extends ChangeNotifier {
     }
   }
 
+  void toggleUserDetail(bool state) {
+    _fetchUserDetail = state;
+  }
+
   Future<void> _fetchUpdates() async {
     if (!_isConnected || _client == null || _isFetching) return;
     _isFetching = true;
     try {
-      final countResult = await _client!.talk([
-        '/ip/hotspot/active/print',
-        '=count-only=',
-      ]);
-      final hsActiveCount = parseCountOnly(countResult.first['ret']);
+      var hsActiveCount = 0;
+
+      if (_fetchUserDetail) {
+        await _loadUsers();
+        hsActiveCount = _activeUsers.length;
+      } else {
+        final countResult = await _client!.talk([
+          '/ip/hotspot/active/print',
+          '=count-only=',
+        ]);
+        hsActiveCount = parseCountOnly(countResult.first['ret']);
+        _activeUsers = [];
+      }
 
       final resources = await _client!.execute(
         '/system/resource/print',
@@ -364,14 +423,10 @@ class MikrotikInstance extends ChangeNotifier {
     final bIn = int.tryParse(item['bytes-in'] ?? '0') ?? 0;
     final bOut = int.tryParse(item['bytes-out'] ?? '0') ?? 0;
 
-    String rx = '0 b', tx = '0 b';
+    int rx = 0, tx = 0;
     if (_prevBytesIn.containsKey(id)) {
-      rx = formatSpeed(
-        parseIntSafe((bIn - _prevBytesIn[id]!) * 8 / _config.refreshInterval),
-      );
-      tx = formatSpeed(
-        parseIntSafe((bOut - _prevBytesOut[id]!) * 8 / _config.refreshInterval),
-      );
+      rx = ((bIn - _prevBytesIn[id]!) * 8 / _config.refreshInterval).toInt();
+      tx = ((bOut - _prevBytesOut[id]!) * 8 / _config.refreshInterval).toInt();
     }
     _prevBytesIn[id] = bIn;
     _prevBytesOut[id] = bOut;
@@ -381,8 +436,8 @@ class MikrotikInstance extends ChangeNotifier {
       name: item['user'] ?? 'Unknown',
       address: addr,
       uptime: item['uptime'] ?? '',
-      bytesIn: formatBytes(parseIntSafe(bIn.toString())),
-      bytesOut: formatBytes(parseIntSafe(bOut.toString())),
+      bytesIn: bIn,
+      bytesOut: bOut,
       rxRate: rx,
       txRate: tx,
     );

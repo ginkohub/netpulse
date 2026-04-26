@@ -82,6 +82,17 @@ class MikrotikCard extends StatelessWidget {
           onTap: () {
             if (!isConnected && config.host.isNotEmpty) instance.connect();
           },
+          onExpansionChanged: (expanded) {
+            if (expanded) {
+              final detailsState = context
+                  .findAncestorStateOfType<_MikrotikDetailsState>();
+              if (detailsState != null && detailsState._usersExpanded) {
+                instance.toggleUserDetail(true);
+              }
+            } else {
+              instance.toggleUserDetail(false);
+            }
+          },
           children: isConnected
               ? [
                   const Divider(height: 1),
@@ -382,14 +393,17 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
           const SizedBox(height: 4),
           _buildInterfacesGrid(instance.interfaceStats),
         ],
-        if (instance.activeUsers.isNotEmpty) ...[
+        if (instance.activeUsersCount > 0) ...[
           const SizedBox(height: 12),
           InkWell(
-            onTap: () => setState(() => _usersExpanded = !_usersExpanded),
+            onTap: () {
+              setState(() => _usersExpanded = !_usersExpanded);
+              instance.toggleUserDetail(_usersExpanded);
+            },
             child: Row(
               children: [
                 _SectionHeader(
-                  title: 'HOTSPOT USERS (${instance.activeUsers.length})',
+                  title: 'HOTSPOT USERS (${instance.activeUsersCount})',
                 ),
                 const SizedBox(width: 4),
                 Icon(
@@ -527,56 +541,138 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
   }
 
   Widget _buildUsersTable(List<MikrotikUser> users) {
+    final instance = widget.instance;
+    const double colName = 110;
+    const double colIP = 100;
+    const double colRate = 75;
+    const double colByte = 75;
+
+    final columnWidths = {
+      0: const FixedColumnWidth(colName),
+      1: const FixedColumnWidth(colIP),
+      2: const FixedColumnWidth(colRate),
+      3: const FixedColumnWidth(colRate),
+      4: const FixedColumnWidth(colByte),
+      5: const FixedColumnWidth(colByte),
+    };
+
+    Widget headerCell(String text, UserSort field) {
+      final isSorted = instance.sortField == field;
+      return InkWell(
+        onTap: () => instance.setSort(field),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              if (isSorted) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  instance.sortAscending
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  size: 10,
+                  color: Colors.orangeAccent,
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget dataCell(String text, {Color? color, bool mono = false}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontFamily: mono ? 'monospace' : null,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columnSpacing: 16,
-        headingRowHeight: 32,
-        dataRowMinHeight: 32,
-        dataRowMaxHeight: 36,
-        columns: const [
-          DataColumn(label: Text('Name', style: TextStyle(fontSize: 11))),
-          DataColumn(label: Text('IP', style: TextStyle(fontSize: 11))),
-          DataColumn(label: Text('RX', style: TextStyle(fontSize: 11))),
-          DataColumn(label: Text('TX', style: TextStyle(fontSize: 11))),
-        ],
-        rows: users
-            .take(20)
-            .map(
-              (u) => DataRow(
-                cells: [
-                  DataCell(Text(u.name, style: const TextStyle(fontSize: 11))),
-                  DataCell(
-                    Text(
-                      u.address,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Table(
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            columnWidths: columnWidths,
+            children: [
+              TableRow(
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(5),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.withAlpha(50)),
                   ),
-                  DataCell(
-                    Text(
-                      u.rxRate,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.greenAccent,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      u.txRate,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                  ),
+                ),
+                children: [
+                  headerCell('Name', UserSort.name),
+                  headerCell('IP', UserSort.address),
+                  headerCell('RX', UserSort.rxRate),
+                  headerCell('TX', UserSort.txRate),
+                  headerCell('IN', UserSort.bytesIn),
+                  headerCell('OUT', UserSort.bytesOut),
                 ],
               ),
-            )
-            .toList(),
+            ],
+          ),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 250),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: Table(
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                columnWidths: columnWidths,
+                children: users
+                    .map(
+                      (u) => TableRow(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.grey.withAlpha(20),
+                            ),
+                          ),
+                        ),
+                        children: [
+                          dataCell(u.name),
+                          dataCell(u.address, mono: true),
+                          dataCell(
+                            formatSpeed(u.rxRate),
+                            color: Colors.greenAccent,
+                          ),
+                          dataCell(
+                            formatSpeed(u.txRate),
+                            color: Colors.blueAccent,
+                          ),
+                          dataCell(
+                            formatBytes(u.bytesIn),
+                            color: Colors.greenAccent,
+                          ),
+                          dataCell(
+                            formatBytes(u.bytesOut),
+                            color: Colors.blueAccent,
+                          ),
+                        ],
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -12,6 +12,7 @@ class BaseCard extends StatelessWidget {
   final VoidCallback? onDoubleTap;
   final List<Widget>? children;
   final bool initiallyExpanded;
+  final ValueChanged<bool>? onExpansionChanged;
 
   const BaseCard({
     super.key,
@@ -26,6 +27,7 @@ class BaseCard extends StatelessWidget {
     this.onDoubleTap,
     this.children,
     this.initiallyExpanded = false,
+    this.onExpansionChanged,
   }) : assert(title != null || titleWidget != null);
 
   @override
@@ -57,6 +59,7 @@ class BaseCard extends StatelessWidget {
                 title: _buildTitleSection(),
                 trailing: trailing,
                 initiallyExpanded: initiallyExpanded,
+                onExpansionChanged: onExpansionChanged,
                 children: children!,
               ),
               if (body != null)

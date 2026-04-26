@@ -3,10 +3,10 @@ class MikrotikUser {
   final String name;
   final String address;
   final String uptime;
-  final String bytesIn;
-  final String bytesOut;
-  final String rxRate;
-  final String txRate;
+  final int bytesIn;
+  final int bytesOut;
+  final int rxRate;
+  final int txRate;
 
   const MikrotikUser({
     required this.id,
