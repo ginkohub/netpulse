@@ -1,19 +1,35 @@
-name: Draft Release
+name: Build & Release
 
 on:
   push:
     tags:
-      - 'v*' # Memicu saat Anda push tag seperti v1.0.0
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build & Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set Version Environment
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            IS_PRERELEASE=false
+          else
+            VERSION=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+            IS_PRERELEASE=true
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_ENV
+          echo "RELEASE_NAME=NetPulse $VERSION" >> $GITHUB_ENV
 
       - name: Setup Java
         uses: actions/setup-java@v3
@@ -36,22 +52,59 @@ jobs:
       - name: Build Android APK (Split)
         run: flutter build apk --split-per-abi --release
 
+      - name: Rename Android APKs
+        run: |
+          cd build/app/outputs/flutter-apk/
+          for apk in app-*-release.apk; do
+            # e.g., app-arm64-v8a-release.apk -> netpulse-1.0.0-arm64-v8a.apk
+            mv "$apk" "netpulse-${{ env.VERSION }}-${apk#app-}"
+          done
+          # Final cleanup of "-release" in filenames if any remain
+          for apk in netpulse-*.apk; do
+            mv "$apk" "${apk%-release.apk}.apk" 2>/dev/null || true
+          done
+
       - name: Build Linux
         run: flutter build linux --release
 
-      - name: Package Linux
+      - name: Package Linux (Tarball & AppImage)
         run: |
+          # Package Tarball
           cd build/linux/x64/release/
-          tar -czvf netpulse-linux-x64.tar.gz bundle/
-          mv netpulse-linux-x64.tar.gz ../../../../
+          tar -czvf "netpulse-${{ env.VERSION }}-linux-x64.tar.gz" bundle/
+          mv "netpulse-${{ env.VERSION }}-linux-x64.tar.gz" ../../../../
+          cd ../../../../
 
-      - name: Create Release
+          # Prepare AppImage
+          wget -O appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          
+          mkdir -p AppDir
+          cp -r build/linux/x64/release/bundle/* AppDir/
+          cp netpulse.png AppDir/netpulse.png
+          
+          cat > AppDir/netpulse.desktop <<EOF
+          [Desktop Entry]
+          Name=NetPulse
+          Exec=netpulse
+          Icon=netpulse
+          Type=Application
+          Categories=Network;Utility;
+          EOF
+          
+          ln -s netpulse AppDir/AppRun
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir "NetPulse-${{ env.VERSION }}-x86_64.AppImage"
+
+      - name: Create/Update Release
         uses: softprops/action-gh-release@v1
         with:
+          name: ${{ env.RELEASE_NAME }}
+          tag_name: ${{ env.VERSION }}
           files: |
-            build/app/outputs/flutter-apk/app-*-release.apk
-            netpulse-linux-x64.tar.gz
+            build/app/outputs/flutter-apk/netpulse-*.apk
+            netpulse-*-linux-x64.tar.gz
+            NetPulse-*-x86_64.AppImage
           draft: false
-          prerelease: false
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

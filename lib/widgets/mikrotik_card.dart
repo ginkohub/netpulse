@@ -47,7 +47,7 @@ class MikrotikCard extends StatelessWidget {
           _ => Colors.greenAccent,
         };
 
-        Widget card = BaseCard(
+        return BaseCard(
           title: isConnected
               ? (config.isDemoMode ? 'Demo Mode' : config.host)
               : 'MikroTik',
@@ -83,13 +83,8 @@ class MikrotikCard extends StatelessWidget {
             if (!isConnected && config.host.isNotEmpty) instance.connect();
           },
           onExpansionChanged: (expanded) {
-            if (expanded) {
-              final detailsState = context
-                  .findAncestorStateOfType<_MikrotikDetailsState>();
-              if (detailsState != null && detailsState._usersExpanded) {
-                instance.toggleUserDetail(true);
-              }
-            } else {
+            instance.toggleResources(expanded);
+            if (!expanded) {
               instance.toggleUserDetail(false);
             }
           },
@@ -102,42 +97,6 @@ class MikrotikCard extends StatelessWidget {
                   ),
                 ]
               : null,
-        );
-
-        return Dismissible(
-          key: ValueKey('mikrotik_$_configKey'),
-          direction: onDelete != null
-              ? DismissDirection.horizontal
-              : (isConnected
-                    ? DismissDirection.endToStart
-                    : DismissDirection.none),
-          confirmDismiss: (direction) async {
-            if (direction == DismissDirection.startToEnd) {
-              if (isConnected) {
-                instance.disconnect();
-              } else if (config.host.isNotEmpty) {
-                instance.connect();
-              }
-              return false;
-            } else {
-              onDelete?.call();
-              provider.removeInstance(_configKey);
-              return true;
-            }
-          },
-          background: Container(
-            color: Colors.greenAccent.withAlpha(50),
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.only(left: 20),
-            child: const Icon(Icons.link_off, color: Colors.greenAccent),
-          ),
-          secondaryBackground: Container(
-            color: Colors.redAccent.withAlpha(50),
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            child: const Icon(Icons.delete, color: Colors.redAccent),
-          ),
-          child: card,
         );
       },
     );
@@ -326,13 +285,21 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
   bool _usersExpanded = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (_usersExpanded) {
+      widget.instance.toggleUserDetail(true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final instance = widget.instance;
     final config = instance.config;
     final system = instance.system;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _buildGrid([
           _buildDetailItem(
@@ -395,12 +362,15 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
         ],
         if (instance.activeUsersCount > 0) ...[
           const SizedBox(height: 12),
-          InkWell(
-            onTap: () {
+          TextButton.icon(
+            icon: Icon(Icons.people, size: 12),
+            onPressed: () {
               setState(() => _usersExpanded = !_usersExpanded);
               instance.toggleUserDetail(_usersExpanded);
             },
-            child: Row(
+            label: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 _SectionHeader(
                   title: 'HOTSPOT USERS (${instance.activeUsersCount})',
@@ -424,7 +394,12 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
   }
 
   Widget _buildGrid(List<Widget> children) {
-    return Wrap(spacing: 20, runSpacing: 10, children: children);
+    return Wrap(
+      spacing: 20,
+      runSpacing: 10,
+      alignment: WrapAlignment.center,
+      children: children,
+    );
   }
 
   Widget _buildDetailItem(String label, String value, IconData icon) {
@@ -466,8 +441,9 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
 
   Widget _buildInterfacesGrid(List<InterfaceStat> stats) {
     return Wrap(
-      spacing: 6,
-      runSpacing: 4,
+      spacing: 20,
+      runSpacing: 10,
+      alignment: WrapAlignment.center,
       children: stats
           .map(
             (s) => SizedBox(
@@ -542,24 +518,26 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
 
   Widget _buildUsersTable(List<MikrotikUser> users) {
     final instance = widget.instance;
+    const double colNo = 30;
     const double colName = 110;
     const double colIP = 100;
     const double colRate = 75;
     const double colByte = 75;
 
     final columnWidths = {
-      0: const FixedColumnWidth(colName),
-      1: const FixedColumnWidth(colIP),
-      2: const FixedColumnWidth(colRate),
+      0: const FixedColumnWidth(colNo),
+      1: const FixedColumnWidth(colName),
+      2: const FixedColumnWidth(colIP),
       3: const FixedColumnWidth(colRate),
-      4: const FixedColumnWidth(colByte),
+      4: const FixedColumnWidth(colRate),
       5: const FixedColumnWidth(colByte),
+      6: const FixedColumnWidth(colByte),
     };
 
-    Widget headerCell(String text, UserSort field) {
-      final isSorted = instance.sortField == field;
+    Widget headerCell(String text, UserSort? field) {
+      final isSorted = field != null && instance.sortField == field;
       return InkWell(
-        onTap: () => instance.setSort(field),
+        onTap: field != null ? () => instance.setSort(field) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
@@ -604,75 +582,80 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Table(
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            columnWidths: columnWidths,
-            children: [
-              TableRow(
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(5),
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.withAlpha(50)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Table(
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              columnWidths: columnWidths,
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(5),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey.withAlpha(50)),
+                    ),
                   ),
+                  children: [
+                    headerCell('#', null),
+                    headerCell('Name', UserSort.name),
+                    headerCell('IP', UserSort.address),
+                    headerCell('RX', UserSort.rxRate),
+                    headerCell('TX', UserSort.txRate),
+                    headerCell('IN', UserSort.bytesIn),
+                    headerCell('OUT', UserSort.bytesOut),
+                  ],
                 ),
-                children: [
-                  headerCell('Name', UserSort.name),
-                  headerCell('IP', UserSort.address),
-                  headerCell('RX', UserSort.rxRate),
-                  headerCell('TX', UserSort.txRate),
-                  headerCell('IN', UserSort.bytesIn),
-                  headerCell('OUT', UserSort.bytesOut),
-                ],
-              ),
-            ],
-          ),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: Table(
-                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                columnWidths: columnWidths,
-                children: users
-                    .map(
-                      (u) => TableRow(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: Colors.grey.withAlpha(20),
-                            ),
+              ],
+            ),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: Table(
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  columnWidths: columnWidths,
+                  children: users.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final u = entry.value;
+                    return TableRow(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Colors.grey.withAlpha(20),
                           ),
                         ),
-                        children: [
-                          dataCell(u.name),
-                          dataCell(u.address, mono: true),
-                          dataCell(
-                            formatSpeed(u.rxRate),
-                            color: Colors.greenAccent,
-                          ),
-                          dataCell(
-                            formatSpeed(u.txRate),
-                            color: Colors.blueAccent,
-                          ),
-                          dataCell(
-                            formatBytes(u.bytesIn),
-                            color: Colors.greenAccent,
-                          ),
-                          dataCell(
-                            formatBytes(u.bytesOut),
-                            color: Colors.blueAccent,
-                          ),
-                        ],
                       ),
-                    )
-                    .toList(),
+                      children: [
+                        dataCell('${index + 1}', color: Colors.grey),
+                        dataCell(u.name),
+                        dataCell(u.address, mono: true),
+                        dataCell(
+                          formatSpeed(u.rxRate),
+                          color: Colors.greenAccent,
+                        ),
+                        dataCell(
+                          formatSpeed(u.txRate),
+                          color: Colors.blueAccent,
+                        ),
+                        dataCell(
+                          formatBytes(u.bytesIn),
+                          color: Colors.greenAccent,
+                        ),
+                        dataCell(
+                          formatBytes(u.bytesOut),
+                          color: Colors.blueAccent,
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -684,12 +667,14 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 9,
-        fontWeight: FontWeight.bold,
-        color: Colors.grey,
+    return Center(
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey,
+        ),
       ),
     );
   }

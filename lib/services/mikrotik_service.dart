@@ -19,6 +19,7 @@ class MikrotikInstance extends ChangeNotifier {
   bool _isLoading = false;
   bool _isFetching = false;
   bool _fetchUserDetail = false;
+  bool _fetchResources = false;
   UserSort _sortField = UserSort.name;
   bool _sortAscending = true;
   String _status = 'Disconnected';
@@ -37,6 +38,7 @@ class MikrotikInstance extends ChangeNotifier {
   bool get isConnected => _isConnected;
   bool get isLoading => _isLoading;
   bool get fetchUserDetail => _fetchUserDetail;
+  bool get fetchResources => _fetchResources;
   UserSort get sortField => _sortField;
   bool get sortAscending => _sortAscending;
 
@@ -324,6 +326,10 @@ class MikrotikInstance extends ChangeNotifier {
 
   void toggleUserDetail(bool state) {
     _fetchUserDetail = state;
+  }
+
+  void toggleResources(bool state) {
+    _fetchResources = state;
   }
 
   Future<void> _fetchUpdates() async {
