@@ -1,4 +1,6 @@
-<img src="netpulse.png" width="100px">
+<p align="center">
+  <img src="netpulse.png" width="240">
+</p>
 
 # NetPulse
 
@@ -7,11 +9,15 @@ NetPulse is a lightweight and powerful network diagnostic tool built with Flutte
 ## Features
 
 - **Multi-Host Ping Monitor**: Monitor multiple IP addresses or domains simultaneously with real-time latency updates, status history, and configurable intervals.
+- **Network Scanning**: 
+  - **IP Scanner**: Quickly discover active devices on your local network, including IP addresses, MAC addresses, and vendor information.
+  - **Port Scanner**: Scan specific hosts for open ports to identify available services and potential security vulnerabilities.
 - **WiFi Insights**: Get detailed information about your current WiFi connection, including SSID, BSSID, Signal Strength, and local IP using modern discovery protocols.
 - **Speed Test**: Measure your download, upload, latency, and jitter. Includes a searchable server list and interactive performance charts.
 - **Advanced MikroTik Monitoring**: Track traffic rates (RX/TX), system resources (CPU, Memory, Uptime), and active hotspot users for MikroTik routers via API.
 - **Global Demo Mode**: A privacy-focused mode that anonymizes sensitive data and simulates active network traffic for demonstrations or testing.
 - **Internal Logs & Diagnostics**: Built-in logging system to monitor application performance and troubleshoot network service issues.
+- **Software Updates**: Stay up-to-date with integrated GitHub release checking and one-click access to the latest versions.
 - **Backup & Restore**: Comprehensive export and import functionality to secure your configurations and monitored hosts.
 - **Modern UI**: Dark-themed Material 3 interface optimized for both Android and Linux.
 
@@ -64,11 +70,16 @@ flutter build linux --release
   - `wifi_iot` & `network_info_plus` for advanced WiFi details.
   - `bonsoir` for mDNS/Zeroconf discovery.
   - `connectivity_plus` for network state monitoring.
+  - `http` for API requests and update checking.
 - **UI & Visualization**:
   - `fl_chart` for real-time performance graphs.
 - **Storage & Persistence**:
   - `path_provider` for JSON-based local data management.
   - `file_picker` & `share_plus` for backup/restore operations.
+- **System Utilities**:
+  - `package_info_plus` for version tracking.
+  - `url_launcher` for external links and updates.
+  - `permission_handler` for managing system permissions.
 
 ## Screenshot
 <img src="docs/screenshot-home-page.png" width="300px">
