@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:netpulse/services/mikrotik_service.dart';
 import 'package:provider/provider.dart';
 import '../services/ping_service.dart';
 import '../services/wifi_service.dart';
@@ -464,23 +465,14 @@ class _HomePageState extends State<HomePage> {
                   // Root of the item MUST have the stable key
                   final bool isMikrotik =
                       item.type == DashboardItemType.mikrotik;
-                  if (isMikrotik) {
-                    return KeyedSubtree(
-                      key: ValueKey('${item.type.name}_${item.value ?? index}'),
-                      child: ReorderableDragStartListener(
-                        index: index,
-                        enabled: isReorder,
-                        child: card,
-                      ),
-                    );
-                  }
+
                   return Dismissible(
                     key: ValueKey(
                       'dismiss_${item.type.name}_${item.value ?? index}',
                     ),
                     direction: isReorder
                         ? DismissDirection.none
-                        : (item.type == DashboardItemType.ping
+                        : (item.type == DashboardItemType.ping || isMikrotik
                               ? DismissDirection.horizontal
                               : DismissDirection.endToStart),
                     confirmDismiss: (direction) async {
@@ -489,6 +481,19 @@ class _HomePageState extends State<HomePage> {
                         if (item.type == DashboardItemType.ping &&
                             val != null) {
                           provider.toggleHost(val);
+                        } else if (isMikrotik) {
+                          final instance = context
+                              .read<MikrotikProvider>()
+                              .getInstance(val ?? 'default');
+                          if (instance.isConnected) {
+                            instance.disconnect();
+                          } else {
+                            if (instance.config.isDemoMode) {
+                              instance.startDemoMode();
+                            } else {
+                              instance.connect();
+                            }
+                          }
                         }
                         return false;
                       }
@@ -506,28 +511,41 @@ class _HomePageState extends State<HomePage> {
                         );
                       }
                     },
-                    background:
-                        item.type == DashboardItemType.ping &&
+                    background: (item.type == DashboardItemType.ping ||
+                                isMikrotik) &&
                             item.value != null
-                        ? Container(
-                            color: Colors.blueAccent,
-                            alignment: Alignment.centerLeft,
-                            padding: const EdgeInsets.only(left: 20),
-                            child: Icon(
-                              provider.getResult(item.value!)?.isPaused ?? false
-                                  ? Icons.play_arrow
-                                  : Icons.pause,
-                              size: 24,
-                            ),
-                          )
+                        ? Builder(builder: (context) {
+                            bool isActive = false;
+                            IconData icon = Icons.play_arrow;
+                            Color color = Colors.blueAccent;
+
+                            if (item.type == DashboardItemType.ping) {
+                              isActive = !(provider.getResult(item.value!)?.isPaused ?? false);
+                              icon = isActive ? Icons.pause : Icons.play_arrow;
+                            } else if (isMikrotik) {
+                              final instance = context
+                                  .read<MikrotikProvider>()
+                                  .getInstance(item.value ?? 'default');
+                              isActive = instance.isConnected;
+                              icon = isActive ? Icons.link_off : Icons.link;
+                              color = Colors.orangeAccent;
+                            }
+
+                            return Container(
+                              color: color,
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.only(left: 20),
+                              child: Icon(icon, size: 24),
+                            );
+                          })
                         : Container(
                             color: Colors.redAccent,
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 20),
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 20),
                             child: const Icon(Icons.delete, size: 24),
                           ),
-                    secondaryBackground:
-                        item.type == DashboardItemType.ping &&
+                    secondaryBackground: (item.type == DashboardItemType.ping ||
+                                isMikrotik) &&
                             item.value != null
                         ? Container(
                             color: Colors.redAccent,
