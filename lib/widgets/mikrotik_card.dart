@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -360,36 +361,247 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
           const SizedBox(height: 4),
           _buildInterfacesGrid(instance.interfaceStats),
         ],
-        if (instance.activeUsersCount > 0) ...[
-          const SizedBox(height: 12),
-          TextButton.icon(
-            icon: Icon(Icons.people, size: 12),
-            onPressed: () {
-              setState(() => _usersExpanded = !_usersExpanded);
-              instance.toggleUserDetail(_usersExpanded);
-            },
-            label: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _SectionHeader(
-                  title: 'HOTSPOT USERS (${instance.activeUsersCount})',
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _usersExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 14,
-                  color: Colors.grey,
-                ),
-              ],
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.people, size: 12),
+              onPressed: () {
+                setState(() => _usersExpanded = !_usersExpanded);
+                instance.toggleUserDetail(_usersExpanded);
+              },
+              label: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _SectionHeader(
+                    title: 'HOTSPOT USERS (${instance.activeUsersCount})',
+                  ),
+
+                  const SizedBox(width: 4),
+                  Icon(
+                    _usersExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 14,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (_usersExpanded) ...[
-            const SizedBox(height: 4),
-            _buildUsersTable(instance.activeUsers),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 25,
+                minHeight: 25,
+                maxWidth: 25,
+                maxHeight: 25,
+              ),
+              icon: Icon(Icons.add, color: Colors.greenAccent, size: 16),
+              onPressed: () {
+                _showAddUserDialog(context, instance);
+              },
+            ),
           ],
+        ),
+        if (_usersExpanded && instance.activeUsersCount > 0) ...[
+          const SizedBox(height: 4),
+          _buildUsersTable(instance.activeUsers),
+        ],
+        if (_usersExpanded && instance.activeUsersCount == 0) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'No active users',
+            style: TextStyle(fontSize: 10, color: Colors.grey),
+          ),
         ],
       ],
+    );
+  }
+
+  void _showAddUserDialog(BuildContext context, MikrotikInstance instance) {
+    final nameCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    String? selectedProfile;
+    bool obscurePass = true;
+    int generatedLength = 6;
+    final profilesFuture = instance.fetchUserProfile();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          title: const Text(
+            'Add Hotspot User',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: FutureBuilder<List<String>>(
+                      future: profilesFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: LinearProgressIndicator(),
+                          );
+                        }
+                        final profiles = snapshot.data ?? [];
+                        if (selectedProfile == null && profiles.isNotEmpty) {
+                          selectedProfile = profiles.first;
+                        }
+                        return DropdownButtonFormField<String>(
+                          initialValue: selectedProfile,
+                          decoration: const InputDecoration(
+                            labelText: 'User Profile',
+                            isDense: true,
+                          ),
+                          items: profiles
+                              .map(
+                                (e) =>
+                                    DropdownMenuItem(value: e, child: Text(e)),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            setDialogState(() {
+                              selectedProfile = v;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 45,
+                    child: DropdownButton<int>(
+                      isDense: true,
+                      value: generatedLength,
+                      underline: const SizedBox(),
+                      items: [4, 6, 8, 10, 12]
+                          .map(
+                            (l) => DropdownMenuItem(
+                              value: l,
+                              child: Text(
+                                '$l',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          setDialogState(() => generatedLength = v);
+                        }
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: Colors.orangeAccent,
+                      size: 20,
+                    ),
+                    tooltip: 'Generate Random User',
+                    onPressed: () {
+                      final random = Random();
+                      const chars = '0123456789abcdefghjkmnpqrstuvwxyz';
+                      String generated = List.generate(
+                        generatedLength,
+                        (index) => chars[random.nextInt(chars.length)],
+                      ).join();
+                      nameCtrl.text = generated;
+                      passCtrl.text = generated;
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  hintText: 'e.g. jdoe',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  isDense: true,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePass ? Icons.visibility : Icons.visibility_off,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () {
+                      setDialogState(() {
+                        obscurePass = !obscurePass;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: obscurePass,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCEL', style: TextStyle(fontSize: 13)),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (nameCtrl.text.isNotEmpty && selectedProfile != null) {
+                  String message = 'User added';
+                  Color bgColor = Colors.green;
+                  try {
+                    await instance.addUser(
+                      nameCtrl.text.trim(),
+                      passCtrl.text.trim(),
+                      selectedProfile!,
+                    );
+                  } catch (e) {
+                    message = e.toString().replaceAll('Exception: ', '');
+                    bgColor = Colors.red;
+                  }
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(message),
+                        backgroundColor: bgColor,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                'ADD USER',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.greenAccent,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -623,9 +835,7 @@ class _MikrotikDetailsState extends State<_MikrotikDetails> {
                     return TableRow(
                       decoration: BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(
-                            color: Colors.grey.withAlpha(20),
-                          ),
+                          bottom: BorderSide(color: Colors.grey.withAlpha(20)),
                         ),
                       ),
                       children: [

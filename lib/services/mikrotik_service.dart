@@ -449,6 +449,61 @@ class MikrotikInstance extends ChangeNotifier {
     );
   }
 
+  Future<List<String>> fetchUserProfile() async {
+    List<String> profiles = [];
+    if (_config.isDemoMode) {
+      return ['default', 'vouchers', 'trial'];
+    }
+    if (!_isConnected || _client == null) return profiles;
+    try {
+      final results = await _client!.talk([
+        '/ip/hotspot/user/profile/print',
+        '.proplist=name',
+      ]);
+      for (var item in results) {
+        if (item['name'] != null) {
+          profiles.add(item['name']!);
+        }
+      }
+    } catch (e) {
+      logger?.addLog(
+        'Mikrotik(${_config.host}) fetchUserProfile: ${e.toString()}',
+        level: 'ERROR',
+      );
+    }
+    return profiles;
+  }
+
+  Future<void> addUser(String name, String password, String profile) async {
+    if (_config.isDemoMode) return;
+    if (!_isConnected || _client == null) throw Exception('Not connected');
+    try {
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      final comment = '${dateStr}_${timeStr}_$profile';
+      
+      await _client!.talk([
+        '/ip/hotspot/user/add',
+        '=name=$name',
+        '=password=$password',
+        '=profile=$profile',
+        '=comment=$comment',
+      ]);
+      _loadUsers();
+    } catch (e) {
+      final msg = e.toString();
+      logger?.addLog(
+        'Mikrotik(${_config.host}) addUser: $msg',
+        level: 'ERROR',
+      );
+      if (msg.contains('already have')) {
+        throw 'User "$name" already exists';
+      }
+      throw 'Failed to add user: $msg';
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
