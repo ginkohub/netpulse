@@ -10,6 +10,12 @@ import 'services/update_service.dart';
 import 'services/mikrotik_service.dart';
 import 'services/port_scanner_service.dart';
 import 'services/ip_scanner_service.dart';
+import 'services/weather_service.dart';
+import 'services/dashboard_service.dart';
+import 'services/traceroute_service.dart';
+import 'services/ip_info_service.dart';
+import 'services/mdns_service.dart';
+import 'services/dns_service.dart';
 import 'pages/home_page.dart';
 import 'database/database.dart';
 
@@ -30,6 +36,9 @@ class NetPulseApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<LogProvider>.value(value: logProvider),
+        ChangeNotifierProvider(
+          create: (context) => DashboardProvider(logger: logProvider),
+        ),
         ChangeNotifierProvider(
           create: (context) => PingProvider(logger: logProvider),
         ),
@@ -56,6 +65,21 @@ class NetPulseApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (context) => IPScannerProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => WeatherProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => TracerouteProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => IpInfoProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => MdnsProvider(logger: logProvider),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => DnsProvider(logger: logProvider),
         ),
       ],
       child: MaterialApp(

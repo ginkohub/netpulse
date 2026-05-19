@@ -9,12 +9,17 @@ NetPulse is a lightweight and powerful network diagnostic tool built with Flutte
 ## Features
 
 - **Multi-Host Ping Monitor**: Monitor multiple IP addresses or domains simultaneously with real-time latency updates, status history, and configurable intervals.
-- **Network Scanning**: 
+- **Network Scanning**:
   - **IP Scanner**: Quickly discover active devices on your local network, including IP addresses, MAC addresses, and vendor information.
   - **Port Scanner**: Scan specific hosts for open ports to identify available services and potential security vulnerabilities.
 - **WiFi Insights**: Get detailed information about your current WiFi connection, including SSID, BSSID, Signal Strength, and local IP using modern discovery protocols.
 - **Speed Test**: Measure your download, upload, latency, and jitter. Includes a searchable server list and interactive performance charts.
-- **Advanced MikroTik Monitoring**: Track traffic rates (RX/TX), system resources (CPU, Memory, Uptime), and active hotspot users for MikroTik routers via API.
+- **Advanced MikroTik Monitoring**: Track traffic rates (RX/TX), system resources (CPU, Memory, Uptime), and active hotspot users for MikroTik routers via API. Includes user management (add/remove hotspot users).
+- **DNS Lookup & WHOIS**: Query DNS records (A, AAAA, MX, CNAME, TXT, NS) and perform WHOIS lookups for domain information.
+- **Public IP & ISP Info**: Display your public IP address, ISP, organization, location, and timezone.
+- **mDNS/Bonjour Discovery**: Discover local network services like Web, SSH, Printers, AirPlay, Chromecast, and more via mDNS/Bonjour.
+- **Traceroute**: Trace the network path to any host with hop-by-hop latency visualization.
+- **Weather Widget**: Current weather conditions and 7-day forecast based on your location (requires location permission).
 - **Global Demo Mode**: A privacy-focused mode that anonymizes sensitive data and simulates active network traffic for demonstrations or testing.
 - **Internal Logs & Diagnostics**: Built-in logging system to monitor application performance and troubleshoot network service issues.
 - **Software Updates**: Stay up-to-date with integrated GitHub release checking and one-click access to the latest versions.
@@ -71,6 +76,7 @@ flutter build linux --release
   - `bonsoir` for mDNS/Zeroconf discovery.
   - `connectivity_plus` for network state monitoring.
   - `http` for API requests and update checking.
+  - `geolocator` for location-based weather data.
 - **UI & Visualization**:
   - `fl_chart` for real-time performance graphs.
 - **Storage & Persistence**:
@@ -80,6 +86,7 @@ flutter build linux --release
   - `package_info_plus` for version tracking.
   - `url_launcher` for external links and updates.
   - `permission_handler` for managing system permissions.
+  - `flutter_local_notifications` for ping alerts.
 
 ## Screenshot
 <img src="docs/screenshot-home-page.png" width="300px">

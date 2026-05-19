@@ -7,6 +7,8 @@ import '../services/settings_service.dart';
 import '../services/speedtest_service.dart';
 import '../services/port_scanner_service.dart';
 import '../services/ip_scanner_service.dart';
+import '../services/weather_service.dart';
+import '../services/dashboard_service.dart';
 import 'log_page.dart';
 import 'about_page.dart';
 import '../widgets/wifi_info_card.dart';
@@ -15,6 +17,11 @@ import '../widgets/speed_test_card.dart';
 import '../widgets/ping_card.dart';
 import '../widgets/port_scanner_card.dart';
 import '../widgets/ip_scanner_card.dart';
+import '../widgets/weather_card.dart';
+import '../widgets/traceroute_card.dart';
+import '../widgets/ip_info_card.dart';
+import '../widgets/mdns_card.dart';
+import '../widgets/dns_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -29,7 +36,9 @@ class _HomePageState extends State<HomePage> {
   void _addHost() {
     final host = _hostController.text.trim();
     if (host.isNotEmpty) {
-      context.read<PingProvider>().addHost(host);
+      final id = 'ping_${DateTime.now().millisecondsSinceEpoch}';
+      context.read<PingProvider>().addHost(id, host);
+      context.read<DashboardProvider>().addItem(DashboardItemType.ping, value: id);
       _hostController.clear();
       FocusScope.of(context).unfocus();
     }
@@ -236,14 +245,15 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
         content:
-            Consumer5<
+            Consumer6<
               PingProvider,
               WifiProvider,
               SpeedTestProvider,
               PortScannerProvider,
-              IPScannerProvider
+              IPScannerProvider,
+              WeatherProvider
             >(
-              builder: (context, ping, wifi, speed, port, ip, child) =>
+              builder: (context, ping, wifi, speed, port, ip, weather, child) =>
                   SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -265,6 +275,7 @@ class _HomePageState extends State<HomePage> {
                             speed.setDemoMode(v);
                             port.setDemoMode(v);
                             ip.setDemoMode(v);
+                            weather.setDemoMode(v);
                           },
                         ),
                       ],
@@ -283,7 +294,11 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshAll() async {
     final wifi = context.read<WifiProvider>();
-    await wifi.updateWifiDetails();
+    final weather = context.read<WeatherProvider>();
+    await Future.wait([
+      wifi.updateWifiDetails(),
+      weather.fetchWeather(),
+    ]);
 
     if (!mounted) return;
 
@@ -307,7 +322,7 @@ class _HomePageState extends State<HomePage> {
         ),
         centerTitle: true,
         actions: [
-          Consumer<PingProvider>(
+          Consumer<DashboardProvider>(
             builder: (context, provider, _) => IconButton(
               icon: Icon(
                 provider.isReorderEnabled ? Icons.check : Icons.reorder,
@@ -386,17 +401,17 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refreshAll,
-          child: Consumer<PingProvider>(
-            builder: (context, provider, child) {
-              final items = provider.items;
-              final isReorder = provider.isReorderEnabled;
+          child: Consumer2<DashboardProvider, PingProvider>(
+            builder: (context, dashboard, pingProvider, child) {
+              final items = dashboard.items;
+              final isReorder = dashboard.isReorderEnabled;
 
               return ReorderableListView.builder(
                 padding: const EdgeInsets.fromLTRB(0, 4, 0, 70),
                 itemCount: items.length,
                 buildDefaultDragHandles: false,
                 onReorder: (oldIndex, newIndex) {
-                  provider.reorderItems(oldIndex, newIndex);
+                  dashboard.reorderItems(oldIndex, newIndex);
                 },
                 proxyDecorator: (child, index, animation) {
                   return AnimatedBuilder(
@@ -416,49 +431,54 @@ class _HomePageState extends State<HomePage> {
                   final item = items[index];
 
                   Widget card;
-                  String itemKey;
+                  final String stableId = item.value ?? item.type.name;
 
                   switch (item.type) {
                     case DashboardItemType.wifi:
-                      itemKey = 'wifi_$index';
                       card = const WifiInfoCard();
                       break;
                     case DashboardItemType.mikrotik:
-                      itemKey = 'mikrotik_${item.value ?? index}';
-                      final cfgKey = item.value ?? '$index';
+                      final cfgKey = item.value ?? 'default';
                       card = MikrotikCard(
                         uniqueKey: cfgKey,
                         configKey: cfgKey,
-                        onDelete: () => provider.removeItem(
-                          item.type,
-                          value: item.value,
-                          index: index,
-                        ),
+                        onDelete: () => dashboard.removeItem(index),
                       );
                       break;
                     case DashboardItemType.speedtest:
-                      itemKey = 'speedtest_$index';
                       card = const SpeedTestCard();
                       break;
                     case DashboardItemType.ping:
-                      final host = item.value;
-                      if (host == null) {
+                      final hostId = item.value;
+                      if (hostId == null) {
                         return SizedBox(key: ValueKey('ping_error_$index'));
                       }
-                      itemKey = 'ping_${host}_$index';
-                      final result = provider.getResult(host);
+                      final result = pingProvider.getResult(hostId);
                       if (result == null) {
-                        return SizedBox(key: ValueKey(itemKey));
+                        return SizedBox(key: ValueKey('ping_missing_$hostId'));
                       }
                       card = PingCard(item: result);
                       break;
                     case DashboardItemType.portScanner:
-                      itemKey = 'port_scanner_$index';
                       card = const PortScannerCard();
                       break;
                     case DashboardItemType.ipScanner:
-                      itemKey = 'ip_scanner_$index';
                       card = const IPScannerCard();
+                      break;
+                    case DashboardItemType.weather:
+                      card = const WeatherCard();
+                      break;
+                    case DashboardItemType.traceroute:
+                      card = const TracerouteCard();
+                      break;
+                    case DashboardItemType.ipInfo:
+                      card = const IpInfoCard();
+                      break;
+                    case DashboardItemType.mdns:
+                      card = const MdnsCard();
+                      break;
+                    case DashboardItemType.dns:
+                      card = const DnsCard();
                       break;
                   }
 
@@ -467,12 +487,11 @@ class _HomePageState extends State<HomePage> {
                       item.type == DashboardItemType.mikrotik;
 
                   return Dismissible(
-                    key: ValueKey(
-                      'dismiss_${item.type.name}_${item.value ?? index}',
-                    ),
+                    key: ValueKey('dismiss_$stableId'),
                     direction: isReorder
                         ? DismissDirection.none
-                        : (item.type == DashboardItemType.ping || isMikrotik
+                        : (item.type == DashboardItemType.ping ||
+                                item.type == DashboardItemType.weather || isMikrotik
                               ? DismissDirection.horizontal
                               : DismissDirection.endToStart),
                     confirmDismiss: (direction) async {
@@ -480,7 +499,10 @@ class _HomePageState extends State<HomePage> {
                         final val = item.value;
                         if (item.type == DashboardItemType.ping &&
                             val != null) {
-                          provider.toggleHost(val);
+                          pingProvider.toggleHost(val);
+                        } else if (item.type == DashboardItemType.weather) {
+                          context.read<WeatherProvider>().fetchWeather();
+                          return false;
                         } else if (isMikrotik) {
                           final instance = context
                               .read<MikrotikProvider>()
@@ -502,26 +524,26 @@ class _HomePageState extends State<HomePage> {
                     onDismissed: (_) {
                       final val = item.value;
                       if (item.type == DashboardItemType.ping && val != null) {
-                        provider.removeHost(val);
+                        pingProvider.removeHost(val);
+                        dashboard.removeItem(index);
                       } else {
-                        provider.removeItem(
-                          item.type,
-                          value: val,
-                          index: index,
-                        );
+                        dashboard.removeItem(index);
                       }
                     },
-                    background: (item.type == DashboardItemType.ping ||
-                                isMikrotik) &&
-                            item.value != null
+                    background: (item.type == DashboardItemType.ping && item.value != null) ||
+                        (item.type == DashboardItemType.weather) ||
+                        (isMikrotik && item.value != null)
                         ? Builder(builder: (context) {
                             bool isActive = false;
                             IconData icon = Icons.play_arrow;
                             Color color = Colors.blueAccent;
 
                             if (item.type == DashboardItemType.ping) {
-                              isActive = !(provider.getResult(item.value!)?.isPaused ?? false);
+                              isActive = !(pingProvider.getResult(item.value!)?.isPaused ?? false);
                               icon = isActive ? Icons.pause : Icons.play_arrow;
+                            } else if (item.type == DashboardItemType.weather) {
+                              icon = Icons.refresh;
+                              color = Colors.blueAccent;
                             } else if (isMikrotik) {
                               final instance = context
                                   .read<MikrotikProvider>()
@@ -535,27 +557,23 @@ class _HomePageState extends State<HomePage> {
                               color: color,
                               alignment: Alignment.centerLeft,
                               padding: const EdgeInsets.only(left: 20),
-                              child: Icon(icon, size: 24),
+                              child: Icon(icon, size: 24, color: Colors.white),
                             );
                           })
                         : Container(
                             color: Colors.redAccent,
-                            alignment: Alignment.centerLeft,
-                            padding: const EdgeInsets.only(left: 20),
-                            child: const Icon(Icons.delete, size: 24),
-                          ),
-                    secondaryBackground: (item.type == DashboardItemType.ping ||
-                                isMikrotik) &&
-                            item.value != null
-                        ? Container(
-                            color: Colors.redAccent,
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
-                            child: const Icon(Icons.delete, size: 24),
-                          )
-                        : null,
+                            child: const Icon(Icons.delete_outline, size: 24, color: Colors.white),
+                          ),
+                    secondaryBackground: Container(
+                      color: Colors.redAccent,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      child: const Icon(Icons.delete_outline, size: 24, color: Colors.white),
+                    ),
                     child: KeyedSubtree(
-                      key: ValueKey('${item.type.name}_${item.value ?? index}'),
+                      key: ValueKey('subtree_$stableId'),
                       child: ReorderableDragStartListener(
                         index: index,
                         enabled: isReorder,
@@ -577,7 +595,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showAddCardMenu(BuildContext context) {
-    final provider = context.read<PingProvider>();
+    final dashboard = context.read<DashboardProvider>();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -604,11 +622,11 @@ class _HomePageState extends State<HomePage> {
                       ListTile(
                         leading: const Icon(Icons.wifi),
                         title: const Text('WiFi Info'),
-                        enabled: !provider.items.any(
+                        enabled: !dashboard.items.any(
                           (i) => i.type == DashboardItemType.wifi,
                         ),
                         onTap: () {
-                          provider.addItem(DashboardItemType.wifi);
+                          dashboard.addItem(DashboardItemType.wifi);
                           Navigator.pop(context);
                         },
                       ),
@@ -616,23 +634,18 @@ class _HomePageState extends State<HomePage> {
                         leading: const Icon(Icons.router),
                         title: const Text('MikroTik'),
                         onTap: () {
-                          final newKey =
-                              'mikrotik_${DateTime.now().millisecondsSinceEpoch}';
-                          provider.addItem(
-                            DashboardItemType.mikrotik,
-                            value: newKey,
-                          );
+                          dashboard.addItem(DashboardItemType.mikrotik);
                           Navigator.pop(context);
                         },
                       ),
                       ListTile(
                         leading: const Icon(Icons.speed),
                         title: const Text('Speed Test'),
-                        enabled: !provider.items.any(
+                        enabled: !dashboard.items.any(
                           (i) => i.type == DashboardItemType.speedtest,
                         ),
                         onTap: () {
-                          provider.addItem(DashboardItemType.speedtest);
+                          dashboard.addItem(DashboardItemType.speedtest);
                           Navigator.pop(context);
                         },
                       ),
@@ -647,22 +660,77 @@ class _HomePageState extends State<HomePage> {
                       ListTile(
                         leading: const Icon(Icons.search),
                         title: const Text('Port Scanner'),
-                        enabled: !provider.items.any(
+                        enabled: !dashboard.items.any(
                           (i) => i.type == DashboardItemType.portScanner,
                         ),
                         onTap: () {
-                          provider.addItem(DashboardItemType.portScanner);
+                          dashboard.addItem(DashboardItemType.portScanner);
                           Navigator.pop(context);
                         },
                       ),
                       ListTile(
                         leading: const Icon(Icons.settings_remote),
                         title: const Text('IP Scanner'),
-                        enabled: !provider.items.any(
+                        enabled: !dashboard.items.any(
                           (i) => i.type == DashboardItemType.ipScanner,
                         ),
                         onTap: () {
-                          provider.addItem(DashboardItemType.ipScanner);
+                          dashboard.addItem(DashboardItemType.ipScanner);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.wb_sunny_outlined),
+                        title: const Text('Weather Info'),
+                        enabled: !dashboard.items.any(
+                          (i) => i.type == DashboardItemType.weather,
+                        ),
+                        onTap: () {
+                          dashboard.addItem(DashboardItemType.weather);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.alt_route),
+                        title: const Text('Traceroute'),
+                        enabled: !dashboard.items.any(
+                          (i) => i.type == DashboardItemType.traceroute,
+                        ),
+                        onTap: () {
+                          dashboard.addItem(DashboardItemType.traceroute);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.info_outline),
+                        title: const Text('Public IP & ISP'),
+                        enabled: !dashboard.items.any(
+                          (i) => i.type == DashboardItemType.ipInfo,
+                        ),
+                        onTap: () {
+                          dashboard.addItem(DashboardItemType.ipInfo);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.radar),
+                        title: const Text('mDNS / Bonjour'),
+                        enabled: !dashboard.items.any(
+                          (i) => i.type == DashboardItemType.mdns,
+                        ),
+                        onTap: () {
+                          dashboard.addItem(DashboardItemType.mdns);
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.dns),
+                        title: const Text('DNS Lookup / WHOIS'),
+                        enabled: !dashboard.items.any(
+                          (i) => i.type == DashboardItemType.dns,
+                        ),
+                        onTap: () {
+                          dashboard.addItem(DashboardItemType.dns);
                           Navigator.pop(context);
                         },
                       ),

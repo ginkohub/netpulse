@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dart_ping/dart_ping.dart';
 import 'package:flutter/material.dart';
-import '../database/database.dart' show AppDatabase;
+import '../database/database.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'log_service.dart';
@@ -53,46 +53,10 @@ class PingResultModel {
   }
 }
 
-enum DashboardItemType {
-  wifi,
-  mikrotik,
-  speedtest,
-  ping,
-  portScanner,
-  ipScanner,
-}
-
-class DashboardItem {
-  final DashboardItemType type;
-  final String? value;
-
-  DashboardItem({required this.type, this.value});
-
-  Map<String, dynamic> toJson() => {'type': type.index, 'value': value};
-
-  factory DashboardItem.fromJson(Map<String, dynamic> json) => DashboardItem(
-    type: DashboardItemType.values[json['type']],
-    value: json['value'],
-  );
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is DashboardItem &&
-          runtimeType == other.runtimeType &&
-          type == other.type &&
-          value == other.value;
-
-  @override
-  int get hashCode => type.hashCode ^ value.hashCode;
-}
-
 class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   final LogProvider? logger;
   final Map<String, PingResultModel> _results = {};
-  List<DashboardItem> _items = [];
-  static const String _storageKey = 'cards';
-  static const String _reorderEnabledKey = 'reorder_enabled';
+  
   static const String _pingIntervalKey = 'ping_interval';
   static const String _pauseOnBackgroundKey = 'pause_on_background';
   static const String _demoModeKey = 'demo_mode';
@@ -101,9 +65,6 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       FlutterLocalNotificationsPlugin();
 
   static const String _groupKey = 'com.ginkohub.netpulse.PING_ALERTS';
-
-  bool _isReorderEnabled = false;
-  bool get isReorderEnabled => _isReorderEnabled;
 
   bool _isDemoMode = false;
   bool get isDemoMode => _isDemoMode;
@@ -120,14 +81,13 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription? _connectivitySub;
   bool _hasNetwork = true;
 
-  List<DashboardItem> get items => _items;
-
   PingResultModel? getResult(String id) => _results[id];
+  List<PingResultModel> get allResults => _results.values.toList();
 
   PingProvider({this.logger}) {
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
-    _loadDashboard();
+    _loadSettings();
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
       _checkConnectivity(results);
     });
@@ -155,6 +115,33 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         await plugin.requestNotificationsPermission();
       }
     }
+  }
+
+  Future<void> _loadSettings() async {
+    _pingInterval = await AppDatabase.getSetting<int>(_pingIntervalKey) ?? 1;
+    _pauseOnBackground =
+        await AppDatabase.getSetting<bool>(_pauseOnBackgroundKey) ?? true;
+    _isDemoMode = await AppDatabase.getSetting<bool>(_demoModeKey) ?? false;
+
+    final pingConfigs = await AppDatabase.getPing();
+    pingConfigs.forEach((id, cfg) {
+      final config = Map<String, dynamic>.from(cfg);
+      _results[id] = PingResultModel(
+        id: id,
+        name: config['name'],
+        host: config['host'] ?? 'unknown',
+        isPaused: config['isPaused'] ?? false,
+        keepAliveInBackground: config['keepAliveInBackground'] ?? false,
+        notifyOnTimeout: config['notifyOnTimeout'] ?? false,
+        notifyOnHighLatency: config['notifyOnHighLatency'] ?? false,
+        latencyThresholdPercent: config['latencyThresholdPercent'] ?? 50,
+        interval: config['interval'] ?? _pingInterval,
+        history: [],
+      );
+    });
+    
+    _startGlobalPingLoop();
+    notifyListeners();
   }
 
   Future<void> _sendNotification(String title, String body) async {
@@ -220,109 +207,20 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         result.latency = null;
         result.error = 'No Network';
       }
-      notifyListeners();
+      _throttledNotify();
     } else if (!oldHasNetwork && _hasNetwork) {
       for (var result in _results.values) {
         if (result.error == 'No Network') {
           result.error = null;
         }
       }
-      notifyListeners();
+      _throttledNotify();
     }
   }
 
-  void toggleReorder() async {
-    _isReorderEnabled = !_isReorderEnabled;
-    notifyListeners();
-    await AppDatabase.setSetting(_reorderEnabledKey, _isReorderEnabled);
-  }
-
-  Future<void> _loadDashboard() async {
-    _isReorderEnabled =
-        await AppDatabase.getSetting<bool>(_reorderEnabledKey) ?? false;
-    _pingInterval = await AppDatabase.getSetting<int>(_pingIntervalKey) ?? 1;
-    _pauseOnBackground =
-        await AppDatabase.getSetting<bool>(_pauseOnBackgroundKey) ?? true;
-    _isDemoMode = await AppDatabase.getSetting<bool>(_demoModeKey) ?? false;
-
-    final saved = await AppDatabase.getSetting<List<dynamic>>(_storageKey);
-
-    if (saved == null || saved.isEmpty) {
-      _items = [];
-    } else {
-      _items = saved
-          .map((s) => DashboardItem.fromJson(Map<String, dynamic>.from(s)))
-          .toList();
-      final pingConfigs = await AppDatabase.getPing();
-      for (var item in _items) {
-        if (item.type == DashboardItemType.ping) {
-          final config = pingConfigs[item.value];
-          final host = config?['host'] ?? item.value ?? 'unknown';
-          _results[item.value!] = PingResultModel(
-            id: item.value!,
-            name: config?['name'],
-            host: host,
-            isPaused: config?['isPaused'] ?? false,
-            keepAliveInBackground: config?['keepAliveInBackground'] ?? false,
-            notifyOnTimeout: config?['notifyOnTimeout'] ?? false,
-            notifyOnHighLatency: config?['notifyOnHighLatency'] ?? false,
-            latencyThresholdPercent: config?['latencyThresholdPercent'] ?? 50,
-            interval: config?['interval'] ?? _pingInterval,
-            history: [],
-          );
-        }
-      }
-    }
-    _startGlobalPingLoop();
-    notifyListeners();
-  }
-
-  Future<void> _saveToPrefs() async {
-    final data = _items.map((i) => i.toJson()).toList();
-    await AppDatabase.setSetting(_storageKey, data);
-  }
-
-  void addHost(String host, {bool save = true}) async {
+  void addHost(String id, String host, {bool save = true}) async {
     if (host.isEmpty) return;
 
-    String? existingId;
-    for (var entry in _results.entries) {
-      if (entry.value.host.toLowerCase() == host.toLowerCase()) {
-        existingId = entry.key;
-        break;
-      }
-    }
-
-    if (existingId != null) {
-      final existing = _results[existingId]!;
-      _results[existingId] = PingResultModel(
-        id: existing.id,
-        host: existing.host,
-        name: existing.name,
-        isPaused: existing.isPaused,
-        keepAliveInBackground: existing.keepAliveInBackground,
-        notifyOnTimeout: existing.notifyOnTimeout,
-        notifyOnHighLatency: existing.notifyOnHighLatency,
-        latencyThresholdPercent: existing.latencyThresholdPercent,
-        interval: existing.interval,
-      );
-      if (save) {
-        await AppDatabase.setPingCard(existingId, {
-          'host': existing.host,
-          'name': existing.name,
-          'isPaused': existing.isPaused,
-          'keepAliveInBackground': existing.keepAliveInBackground,
-          'notifyOnTimeout': existing.notifyOnTimeout,
-          'notifyOnHighLatency': existing.notifyOnHighLatency,
-          'latencyThresholdPercent': existing.latencyThresholdPercent,
-          'interval': existing.interval,
-        });
-      }
-      notifyListeners();
-      return;
-    }
-
-    final id = 'ping_${DateTime.now().millisecondsSinceEpoch}';
     _results[id] = PingResultModel(
       id: id,
       host: host,
@@ -331,7 +229,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
       notifyOnHighLatency: false,
       latencyThresholdPercent: 50,
     );
-    _items.add(DashboardItem(type: DashboardItemType.ping, value: id));
+    
     if (save) {
       await AppDatabase.setPingCard(id, {
         'host': host,
@@ -342,8 +240,111 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
         'latencyThresholdPercent': 50,
         'interval': _pingInterval,
       });
-      _saveToPrefs();
     }
+    notifyListeners();
+  }
+
+  void removeHost(String id) async {
+    _results.remove(id);
+    await AppDatabase.removePingCard(id);
+    notifyListeners();
+  }
+
+  void removeAllHosts() async {
+    final ids = _results.keys.toList();
+    for (var id in ids) {
+      await AppDatabase.removePingCard(id);
+    }
+    _results.clear();
+    notifyListeners();
+  }
+
+  void updatePing(
+    String id, {
+    String? name,
+    String? host,
+    int? interval,
+    bool? keepAliveInBackground,
+    bool? notifyOnTimeout,
+    bool? notifyOnHighLatency,
+    int? latencyThresholdPercent,
+  }) async {
+    final existing = _results[id];
+    if (existing != null) {
+      bool hostChanged =
+          host != null && host.toLowerCase() != existing.host.toLowerCase();
+
+      existing.name = name ?? existing.name;
+      existing.interval = interval ?? existing.interval;
+      if (keepAliveInBackground != null) {
+        existing.keepAliveInBackground = keepAliveInBackground;
+      }
+      if (notifyOnTimeout != null) {
+        existing.notifyOnTimeout = notifyOnTimeout;
+      }
+      if (notifyOnHighLatency != null) {
+        existing.notifyOnHighLatency = notifyOnHighLatency;
+      }
+      if (latencyThresholdPercent != null) {
+        existing.latencyThresholdPercent = latencyThresholdPercent;
+      }
+
+      if (hostChanged) {
+        existing.host = host;
+        existing.latency = null;
+        existing.history.clear();
+      }
+
+      await AppDatabase.setPingCard(id, {
+        'host': existing.host,
+        'name': existing.name,
+        'isPaused': existing.isPaused,
+        'keepAliveInBackground': existing.keepAliveInBackground,
+        'notifyOnTimeout': existing.notifyOnTimeout,
+        'notifyOnHighLatency': existing.notifyOnHighLatency,
+        'latencyThresholdPercent': existing.latencyThresholdPercent,
+        'interval': existing.interval,
+      });
+      notifyListeners();
+    }
+  }
+
+  void toggleHost(String id) async {
+    final result = _results[id];
+    if (result != null) {
+      result.isPaused = !result.isPaused;
+      await AppDatabase.setPingCard(id, {
+        'host': result.host,
+        'name': result.name,
+        'isPaused': result.isPaused,
+        'keepAliveInBackground': result.keepAliveInBackground,
+        'notifyOnTimeout': result.notifyOnTimeout,
+        'notifyOnHighLatency': result.notifyOnHighLatency,
+        'latencyThresholdPercent': result.latencyThresholdPercent,
+        'interval': result.interval,
+      });
+      notifyListeners();
+    }
+  }
+
+  void reloadHosts() async {
+    final pingConfigs = await AppDatabase.getPing();
+    _results.clear();
+    pingConfigs.forEach((id, cfg) {
+      final config = Map<String, dynamic>.from(cfg);
+      _results[id] = PingResultModel(
+        id: id,
+        name: config['name'],
+        host: config['host'] ?? 'unknown',
+        isPaused: config['isPaused'] ?? false,
+        keepAliveInBackground: config['keepAliveInBackground'] ?? false,
+        notifyOnTimeout: config['notifyOnTimeout'] ?? false,
+        notifyOnHighLatency: config['notifyOnHighLatency'] ?? false,
+        latencyThresholdPercent: config['latencyThresholdPercent'] ?? 50,
+        interval: config['interval'] ?? _pingInterval,
+        history: [],
+      );
+    });
     notifyListeners();
   }
 
@@ -377,219 +378,45 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
     await AppDatabase.setSetting(_demoModeKey, value);
   }
 
-  void removeHost(String id) async {
-    _results.remove(id);
-    _items.removeWhere(
-      (i) => i.type == DashboardItemType.ping && i.value == id,
-    );
-    await AppDatabase.removePingCard(id);
-    _saveToPrefs();
-    notifyListeners();
-  }
-
-  void removeItem(DashboardItemType type, {String? value, int? index}) async {
-    if (type == DashboardItemType.ping && value != null) {
-      removeHost(value);
-    } else if (index != null && index >= 0 && index < _items.length) {
-      final item = _items[index];
-      if (item.type == DashboardItemType.ping && item.value != null) {
-        await AppDatabase.removePingCard(item.value!);
-        _results.remove(item.value);
-      } else if (item.type == DashboardItemType.mikrotik &&
-          item.value != null) {
-        await AppDatabase.removeMikrotikCard(item.value!);
-      }
-      _items.removeAt(index);
-      _saveToPrefs();
-      notifyListeners();
-    } else {
-      final idx = _items.indexWhere((i) => i.type == type && i.value == value);
-      if (idx != -1) {
-        final item = _items[idx];
-        if (item.type == DashboardItemType.ping && item.value != null) {
-          await AppDatabase.removePingCard(item.value!);
-          _results.remove(item.value);
-        } else if (item.type == DashboardItemType.mikrotik &&
-            item.value != null) {
-          await AppDatabase.removeMikrotikCard(item.value!);
-        }
-        _items.removeAt(idx);
-        _saveToPrefs();
-        notifyListeners();
-      }
-    }
-  }
-
-  void addItem(DashboardItemType type, {String? value}) {
-    if (type == DashboardItemType.ping) {
-      if (value != null && value.isNotEmpty) {
-        addHost(value);
-      }
-    } else if (type == DashboardItemType.wifi ||
-        type == DashboardItemType.speedtest) {
-      if (!_items.any((i) => i.type == type)) {
-        _items.add(DashboardItem(type: type, value: value));
-        _saveToPrefs();
-        notifyListeners();
-      }
-    } else {
-      final newValue =
-          value ?? '${type.name}_${DateTime.now().millisecondsSinceEpoch}';
-      _items.add(DashboardItem(type: type, value: newValue));
-      _saveToPrefs();
-      notifyListeners();
-    }
-  }
-
-  void removeAllHosts() async {
-    for (var item in _items) {
-      if (item.type == DashboardItemType.ping && item.value != null) {
-        await AppDatabase.removePingCard(item.value!);
-      }
-    }
-    _results.clear();
-    _items.removeWhere((i) => i.type == DashboardItemType.ping);
-    _saveToPrefs();
-    notifyListeners();
-  }
-
-  void updatePing(
-    String id, {
-    String? name,
-    String? host,
-    int? interval,
-    bool? keepAliveInBackground,
-    bool? notifyOnTimeout,
-    bool? notifyOnHighLatency,
-    int? latencyThresholdPercent,
-  }) async {
-    final existing = _results[id];
-    if (existing != null) {
-      bool hostChanged =
-          host != null && host.toLowerCase() != existing.host.toLowerCase();
-
-      existing.name = name ?? existing.name;
-      existing.interval = interval ?? existing.interval;
-      if (keepAliveInBackground != null) {
-        existing.keepAliveInBackground = keepAliveInBackground;
-      }
-      if (notifyOnTimeout != null) {
-        existing.notifyOnTimeout = notifyOnTimeout;
-      }
-      if (notifyOnHighLatency != null) {
-        existing.notifyOnHighLatency = notifyOnHighLatency;
-      }
-      if (latencyThresholdPercent != null) {
-        existing.latencyThresholdPercent = latencyThresholdPercent;
-      }
-      if (host != null) {
-        existing.host = host;
-        if (hostChanged) {
-          existing.history.clear();
-          existing.latency = null;
-        }
-      }
-
-      await AppDatabase.setPingCard(id, {
-        'name': existing.name,
-        'host': existing.host,
-        'isPaused': existing.isPaused,
-        'keepAliveInBackground': existing.keepAliveInBackground,
-        'notifyOnTimeout': existing.notifyOnTimeout,
-        'notifyOnHighLatency': existing.notifyOnHighLatency,
-        'latencyThresholdPercent': existing.latencyThresholdPercent,
-        'interval': existing.interval,
-      });
-      notifyListeners();
-    }
-  }
-
-  void reorderItems(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
-    final item = _items.removeAt(oldIndex);
-    _items.insert(newIndex, item);
-    _saveToPrefs();
-    notifyListeners();
-  }
-
-  void _updatePausedState(String id, bool paused) async {
-    final result = _results[id];
-    if (result != null) {
-      result.isPaused = paused;
-      await AppDatabase.setPingCard(id, {
-        'name': result.name,
-        'host': result.host,
-        'isPaused': result.isPaused,
-      });
-      notifyListeners();
-    }
-  }
-
-  void toggleHost(String id) {
-    final current = _results[id]?.isPaused ?? false;
-    _updatePausedState(id, !current);
-  }
-
-  void pauseHost(String id) {
-    _updatePausedState(id, true);
-  }
-
-  void resumeHost(String id) {
-    _updatePausedState(id, false);
-  }
-
-  Future<void> reloadHosts() async {
-    _results.clear();
-    _items.clear();
-    await _loadDashboard();
-    notifyListeners();
-  }
-
   void _startGlobalPingLoop() {
     if (_isLooping) return;
     _isLooping = true;
-    _runNextPingBatch();
+    _runPingLoop();
   }
 
-  Future<void> _runNextPingBatch() async {
+  Future<void> _runPingLoop() async {
     while (_isLooping) {
+      final now = DateTime.now();
+
       if (!_hasNetwork && !_isDemoMode) {
-        _throttledNotify();
         await Future.delayed(const Duration(seconds: 1));
         continue;
       }
 
-      final now = DateTime.now();
-      final idsDue = _results.entries
-          .where((e) {
-            final r = e.value;
-            if (r.isPaused) return false;
-
-            if (_isBackgrounded &&
-                _pauseOnBackground &&
-                !r.keepAliveInBackground) {
-              return false;
-            }
-
-            if (r.lastPingTime == null) return true;
-            return now.difference(r.lastPingTime!).inSeconds >= r.interval;
-          })
-          .map((e) => e.key)
-          .toList();
-
-      if (idsDue.isEmpty) {
-        await Future.delayed(const Duration(milliseconds: 500));
+      if (_isBackgrounded && _pauseOnBackground && !_isDemoMode) {
+        await Future.delayed(const Duration(seconds: 1));
         continue;
       }
 
-      for (int i = 0; i < idsDue.length; i += 3) {
-        if (!_hasNetwork) break;
-        final batch = idsDue.skip(i).take(3);
-        final futures = batch.map((id) => _pingSingleHost(id)).toList();
-        await Future.wait(futures);
-        await Future.delayed(const Duration(milliseconds: 50));
+      final List<Future<void>> pingTasks = [];
+
+      for (var result in _results.values) {
+        if (result.isPaused) continue;
+
+        final bool shouldPing =
+            result.lastPingTime == null ||
+            now.difference(result.lastPingTime!).inSeconds >= result.interval;
+
+        if (shouldPing) {
+          if (_isBackgrounded && !result.keepAliveInBackground && !_isDemoMode) {
+            continue;
+          }
+          pingTasks.add(_pingSingleHost(result.id));
+        }
+      }
+
+      if (pingTasks.isNotEmpty) {
+        await Future.wait(pingTasks);
       }
 
       await Future.delayed(const Duration(milliseconds: 500));
@@ -599,62 +426,16 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _pingSingleHost(String id) async {
     final result = _results[id];
     if (result == null || result.isPaused) return;
-    if (!_isDemoMode && !_hasNetwork) {
-      _throttledNotify();
-      return;
-    }
-
+    
     result.lastPingTime = DateTime.now();
 
     if (_isDemoMode) {
-      final rand = DateTime.now().millisecondsSinceEpoch + id.hashCode;
-      final latency = 5 + (rand % 45);
-      result.latency = latency;
+      await Future.delayed(const Duration(milliseconds: 100));
       result.isOnline = true;
+      result.latency = 20 + (DateTime.now().millisecond % 50);
       result.error = null;
-
-      final now = DateTime.now();
-      final avg = result.averageLatency;
-      String currentState = 'normal';
-      final threshold = avg * (1 + result.latencyThresholdPercent / 100);
-      if (result.notifyOnHighLatency &&
-          avg > 0 &&
-          result.latency! >= threshold) {
-        currentState = 'high_latency';
-      }
-
-      if (currentState != result.lastAlertedState) {
-        if (currentState == 'high_latency' && result.notifyOnHighLatency) {
-          result.lastNotifyTime = now;
-          _sendNotification(
-            'High Latency: ${result.displayName}',
-            '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
-          );
-        } else if (result.lastAlertedState == 'high_latency' &&
-            (result.notifyOnHighLatency || result.notifyOnTimeout)) {
-          result.lastNotifyTime = now;
-          _sendNotification(
-            'Recovered: ${result.displayName}',
-            'Connection is back to normal (${result.latency}ms)',
-          );
-        }
-        result.lastAlertedState = currentState;
-      } else if (currentState == 'high_latency' && result.notifyOnHighLatency) {
-        if (result.lastNotifyTime == null ||
-            now.difference(result.lastNotifyTime!) >
-                const Duration(minutes: 1)) {
-          result.lastNotifyTime = now;
-          _sendNotification(
-            'Still High Latency: ${result.displayName}',
-            '${result.latency}ms (Avg: ${avg.toStringAsFixed(1)}ms)',
-          );
-        }
-      }
-
-      result.history.add(latency);
-      if (result.history.length > 60) {
-        result.history.removeAt(0);
-      }
+      result.history.add(result.latency!);
+      if (result.history.length > 60) result.history.removeAt(0);
       _throttledNotify();
       return;
     }
@@ -722,7 +503,7 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
             
             if (toggleOn && (result.lastNotifyTime == null ||
                 now.difference(result.lastNotifyTime!) >
-                    const Duration(minutes: 1))) {
+                    const Duration(minutes: 5))) {
               shouldNotify = true;
               if (currentState == 'timeout') {
                 alertTitle = 'Still Timeout: ${result.displayName}';
@@ -741,9 +522,6 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
           }
 
           if (!hasSuccess) {
-            result.isOnline = false;
-            result.latency = null;
-            result.error ??= 'No Response';
             result.history.add(-1);
           } else {
             result.history.add(result.latency!);
@@ -787,9 +565,9 @@ class PingProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _isLooping = false;
     _connectivitySub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }
